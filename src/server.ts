@@ -29,7 +29,8 @@ app.addHook('onClose', async () => {
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void app.close(); });
 
 try {
-  await app.listen({ port: Number(process.env.PORT ?? 3000), host: process.env.HOST ?? '127.0.0.1' });
+  const address = await app.listen({ port: Number(process.env.PORT ?? 3000), host: process.env.HOST ?? '127.0.0.1' });
+  console.log(`API de reservas escuchando en ${address}. Pulsa Ctrl+C para detenerla.`);
 } catch (error) {
   await app.close();
   throw error;

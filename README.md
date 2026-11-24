@@ -126,12 +126,30 @@ Si el indicador se queda en `postgres-#` o `reservas->`, hay una instrucción SQ
 
 ## Ejecutar la API
 
-Sal de `psql` con `\q` y ejecuta `npm run dev` en la terminal del sistema, desde la raíz del repositorio. Para ejecutar el código compilado, usa `npm run build` y después `npm start`. El [contrato de la API](docs/arquitectura.md#api) documenta las rutas y permisos.
+Sal de `psql` con `\q`. Desde la raíz del repositorio, elige cómo iniciar la API.
+
+**En desarrollo**, ejecuta:
+
+```text
+npm run dev
+```
+
+La API muestra la dirección en la que escucha, normalmente `http://127.0.0.1:3000`. La terminal queda ocupada mientras el servidor está en ejecución. Usa otra terminal para hacer consultas.
+
+**Para probar la versión compilada**, pulsa **Ctrl+C** en la terminal donde ejecutaste `npm run dev`. Luego ejecuta:
+
+```text
+npm run build
+npm start
+```
+
+`npm run dev` y `npm start` arrancan la misma API y usan el mismo puerto de forma predeterminada. Ejecuta uno a la vez. El [contrato de la API](docs/arquitectura.md#api) documenta las rutas y permisos.
 
 ## Errores frecuentes
 
 | Mensaje o síntoma | Qué revisar |
 |---|---|
+| `EADDRINUSE: address already in use 127.0.0.1:3000` | El puerto de la API está ocupado. Si ya ejecutaste `npm run dev` o `npm start`, usa esa instancia o detenla con **Ctrl+C** en su terminal antes de iniciar otra. Si otro servicio necesita el puerto, configura `PORT=3001` en `.env` e inicia la API en `http://127.0.0.1:3001`. |
 | La terminal indica que `psql` no existe | Instala las herramientas de consola de PostgreSQL. Si ya están instaladas, agrega su directorio de ejecutables a `PATH` y abre una terminal nueva. |
 | `connection refused` o `no response` | Arranca el servicio de PostgreSQL y verifica el puerto con `pg_isready`. |
 | `role "reservas" does not exist` | Revisa `\du reservas` desde la sesión del administrador y crea el rol antes de asignar su contraseña o crear la base. |
