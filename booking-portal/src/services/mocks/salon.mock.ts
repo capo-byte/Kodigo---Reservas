@@ -1,4 +1,4 @@
-import { addDays, setHours, setMinutes, startOfDay } from 'date-fns';
+import { setHours, setMinutes, startOfDay } from 'date-fns';
 import {
     CreateBookingPayload,
     CreateBookingResponse,
@@ -135,6 +135,7 @@ export async function mockGetAvailableSlots(params: {
 export async function mockCreateBooking(
     payload: CreateBookingPayload
 ): Promise<CreateBookingResponse> {
+    void payload;
     await sleep(600);
 
     return {
