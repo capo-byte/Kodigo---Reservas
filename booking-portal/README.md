@@ -1,5 +1,44 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Panel de negocio (rama `frontend-business`)
+
+El panel administrativo está disponible en:
+
+```text
+/negocio/[slug]                 → Resumen y métricas del día
+/negocio/[slug]/agenda          → Agenda diaria y semanal interactiva
+/negocio/[slug]/servicios       → CRUD de servicios, tarifas y duraciones
+/negocio/[slug]/personal        → CRUD de especialistas y días de trabajo
+/negocio/[slug]/clientes        → Gestión e historial de clientes
+/negocio/[slug]/configuracion   → Horarios, políticas y perfil del salón
+```
+
+Por ejemplo, con el salón de prueba: [`/negocio/barberia-studio-sv`](/negocio/barberia-studio-sv).
+
+### Funcionalidad incluida
+
+- Agenda visual con vistas **día** y **semana**, filtro por especialista y línea de hora actual.
+- **Crear citas manuales** haciendo clic en un espacio libre o desde el botón «Nueva cita».
+- **Reprogramar arrastrando** una cita a otro horario, día o columna de especialista.
+- **Bloquear horarios** (almuerzos, reuniones, ausencias) y quitarlos desde la agenda.
+- Acciones de cita: marcar **atendida**, **inasistencia**, **cancelar**, reprogramar o eliminar.
+- CRUD de servicios con precio, duración, categoría y especialistas habilitados.
+- CRUD de personal con datos de contacto, color de agenda, días de trabajo y activación.
+- Gestión de clientes con búsqueda, filtros, historial, notas internas y próxima cita.
+- Configuración de horario de atención, intervalo de slots, política de pago y política de cancelación.
+
+### Datos y futura integración con la API
+
+Toda la capa de datos del panel vive en `src/services/business.service.ts` y sus tipos en
+`src/types/booking.contracts.ts`. Actualmente usa datos mock deterministas
+(`src/services/mocks/business.mock.ts`), incluyendo citas relativas a la fecha actual. Para
+conectar la API real basta con reemplazar las implementaciones de `businessService` por
+llamadas a `apiClient`, manteniendo las firmas y los tipos de `BusinessSnapshot`.
+
+> El panel de negocio funciona sin variables de entorno. El portal público existente usa
+> `bookingService`; para probarlo con mocks crea un `.env.local` con
+> `NEXT_PUBLIC_USE_MOCKS=true`.
+
 ## Getting Started
 
 First, run the development server:
