@@ -145,6 +145,18 @@ npm start
 
 `npm run dev` y `npm start` arrancan la misma API y usan el mismo puerto de forma predeterminada. Ejecuta uno a la vez. El [contrato de la API](docs/arquitectura.md#api) documenta las rutas y permisos.
 
+### Probar la disponibilidad en el navegador
+
+Usa el `branch_id` y el `service_id` devueltos por el SQL de datos iniciales. Sustituye ambos marcadores en la URL y ajusta el puerto si lo cambiaste en `.env`.
+
+```text
+http://127.0.0.1:3000/negocios/mibarberia503/sucursales/ID_SUCURSAL/disponibilidad?date=2026-11-25&serviceId=ID_SERVICIO
+```
+
+`date` es el día que quieres consultar en la zona horaria de la sucursal (UTC−6). Usa el formato `AAAA-MM-DD`, con ceros iniciales cuando hagan falta. `2026-11-25` es un ejemplo de formato. Sustitúyelo por una fecha próxima de lunes a sábado. Si escribes `AAAA-MM-DD` literalmente, usas barras o incluyes una hora, la API devuelve `date: valor inválido`.
+
+La respuesta contiene una lista `slots`. Si está vacía, la consulta fue válida y no hay horarios que se puedan reservar para ese día.
+
 ## Errores frecuentes
 
 | Mensaje o síntoma | Qué revisar |
