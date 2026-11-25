@@ -68,6 +68,7 @@ export interface BookingDetails {
     id: string;
     manageToken: string;
     status: BookingStatus;
+    paymentMethod?: 'LOCAL' | 'CARD';
     createdAt: string;
     startTime: string; // ISO 8601 UTC
     endTime: string;   // ISO 8601 UTC

@@ -42,17 +42,26 @@ export function BookingManagementView({ initialBooking }: BookingManagementViewP
     const [isCancelling, setIsCancelling] = useState(false);
 
     useEffect(() => {
-        try {
-            const raw = localStorage.getItem('kodigo_bookings_store');
-            if (raw) {
-                const store = JSON.parse(raw);
-                if (store[initialBooking.manageToken]) {
-                    setBooking(store[initialBooking.manageToken]);
+        if (!bookingService.usesMocks) return;
+
+        let isCurrent = true;
+        bookingService
+            .getBookingByToken(initialBooking.manageToken)
+            .then((storedBooking) => {
+                if (isCurrent) setBooking(storedBooking);
+            })
+            .catch((error: unknown) => {
+                if (isCurrent) {
+                    toast.error('No se pudo cargar el estado actualizado de la cita', {
+                        description:
+                            error instanceof Error ? error.message : 'Intenta nuevamente más tarde.',
+                    });
                 }
-            }
-        } catch {
-            // fallback
-        }
+            });
+
+        return () => {
+            isCurrent = false;
+        };
     }, [initialBooking.manageToken]);
 
     const dateStr = booking.startTime.split('T')[0];
@@ -66,14 +75,6 @@ export function BookingManagementView({ initialBooking }: BookingManagementViewP
                 selectedReason
             );
             setBooking(response.booking);
-            try {
-                const raw = localStorage.getItem('kodigo_bookings_store');
-                const store = raw ? JSON.parse(raw) : {};
-                store[booking.manageToken] = response.booking;
-                localStorage.setItem('kodigo_bookings_store', JSON.stringify(store));
-            } catch {
-                // fallback
-            }
             setShowCancelPrompt(false);
             toast.success('Cita cancelada con éxito');
         } catch (error) {
@@ -88,6 +89,7 @@ export function BookingManagementView({ initialBooking }: BookingManagementViewP
 
     const isCancelled = booking.status === 'CANCELLED';
     const isConfirmed = booking.status === 'CONFIRMED';
+    const canCancel = !isCancelled;
 
     return (
         <div className="space-y-6">
@@ -235,7 +237,7 @@ export function BookingManagementView({ initialBooking }: BookingManagementViewP
 
             {/* Acciones de Gestión */}
             <div className="space-y-3">
-                {isConfirmed && !showCancelPrompt && (
+                {canCancel && !showCancelPrompt && (
                     <div className="flex flex-col sm:flex-row gap-2.5">
                         <Button
                             type="button"
@@ -257,7 +259,7 @@ export function BookingManagementView({ initialBooking }: BookingManagementViewP
                 )}
 
                 {/* Cuadro de confirmación de cancelación */}
-                {isConfirmed && showCancelPrompt && (
+                {canCancel && showCancelPrompt && (
                     <Card className="border-destructive/40 shadow-sm animate-in fade-in duration-200">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-base text-destructive flex items-center gap-2">

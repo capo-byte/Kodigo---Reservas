@@ -144,8 +144,11 @@ function getStoredBookings(): Record<string, BookingDetails> {
         try {
             const raw = localStorage.getItem(STORAGE_KEY);
             return raw ? JSON.parse(raw) : {};
-        } catch {
-            return {};
+        } catch (error) {
+            console.error('[MockStore] No se pudo leer el historial de reservas:', error);
+            throw new Error('No se pudo leer el historial de reservas del navegador.', {
+                cause: error,
+            });
         }
     }
     return {};
@@ -248,6 +251,28 @@ export async function mockCreateBooking(
                 ? undefined
                 : 'pi_mock_secret_123456789',
     };
+}
+
+export async function mockGetBookingHistory(salonSlug?: string): Promise<BookingDetails[]> {
+    await sleep(250);
+
+    return Object.values(getStoredBookings())
+        .filter((booking) => !salonSlug || booking.salon.slug === salonSlug)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function mockConfirmBookingPayment(
+    manageToken: string,
+    paymentMethod: 'LOCAL' | 'CARD'
+): Promise<BookingDetails> {
+    await sleep(250);
+
+    const booking = await mockGetBookingByToken(manageToken);
+    booking.status = 'CONFIRMED';
+    booking.paymentMethod = paymentMethod;
+    saveStoredBooking(manageToken, booking);
+
+    return booking;
 }
 
 export async function mockGetBookingByToken(token: string): Promise<BookingDetails> {

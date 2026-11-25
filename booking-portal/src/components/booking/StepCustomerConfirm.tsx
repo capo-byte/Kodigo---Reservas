@@ -59,7 +59,7 @@ interface StepCustomerConfirmProps {
     isSubmitting: boolean;
     conflictError: string | null;
     pendingPayment: CreateBookingResponse | null;
-    onPaymentComplete: () => void;
+    onPaymentComplete: (method: 'LOCAL' | 'CARD') => void;
 }
 
 export function StepCustomerConfirm({

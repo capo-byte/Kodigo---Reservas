@@ -145,6 +145,24 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
         await bookingMutation.mutateAsync(validData);
     };
 
+    const handlePaymentComplete = async (paymentMethod: 'LOCAL' | 'CARD') => {
+        if (bookingResult && bookingService.usesMocks) {
+            try {
+                await bookingService.confirmMockPayment(
+                    bookingResult.manageToken,
+                    paymentMethod
+                );
+            } catch (error) {
+                toast.error('No se pudo actualizar el estado de la reserva', {
+                    description:
+                        error instanceof Error ? error.message : 'Intenta nuevamente en unos segundos.',
+                });
+                return;
+            }
+        }
+        setIsConfirmed(true);
+    };
+
     const handleBookAnother = () => {
         setStep(1);
         setSelectedServiceIds([]);
@@ -273,7 +291,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
                         isSubmitting={bookingMutation.isPending}
                         conflictError={conflictError}
                         pendingPayment={bookingResult}
-                        onPaymentComplete={() => setIsConfirmed(true)}
+                        onPaymentComplete={handlePaymentComplete}
                     />
 
                     {bookingResult?.status !== 'PENDING_PAYMENT' && (

@@ -13,7 +13,7 @@ export interface PaymentSectionProps {
     amountLabel: string;
     clientSecret?: string;
     bookingId: string;
-    onSimulatedSuccess: () => void;
+    onSimulatedSuccess: (method: PaymentMethodOption) => void;
 }
 
 type PaymentMethodOption = 'CARD' | 'LOCAL';
@@ -43,7 +43,7 @@ export function PaymentSection({
             return;
         }
         setFormError(null);
-        onSimulatedSuccess();
+        onSimulatedSuccess('CARD');
     };
 
     return (
@@ -229,6 +229,9 @@ export function PaymentSection({
                                     podrás abonar los <strong className="text-foreground">{amountLabel}</strong> en
                                     efectivo o con tarjeta en el mostrador.
                                 </p>
+                                <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                                    Debes llegar puntual o unos minutos antes para asegurar tu cita, de lo contrario es probable que la pierdas.
+                                </p>
                             </div>
                         </div>
 
@@ -236,7 +239,7 @@ export function PaymentSection({
                             type="button"
                             className="w-full gap-2"
                             size="lg"
-                            onClick={onSimulatedSuccess}
+                            onClick={() => onSimulatedSuccess('LOCAL')}
                         >
                             <CheckCircle2 className="h-4 w-4" />
                             Confirmar reserva (pago en local)
@@ -248,6 +251,14 @@ export function PaymentSection({
                     <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0" />
                     <span>Transacción cifrada y protegida por los protocolos de seguridad.</span>
                 </div>
+                {method === 'CARD' && (
+                    <p className="border-t pt-3 text-[10px] leading-relaxed text-muted-foreground">
+                        © 2026 {salonName}. Todos los derechos reservados. Al pagar con tarjeta en nuestra web,
+                        aceptas que las devoluciones por cancelación posterior son muy poco probables. Si surge
+                        algún inconveniente o reclamo, la atención se realizará únicamente de forma presencial
+                        en nuestro establecimiento.
+                    </p>
+                )}
             </CardContent>
         </Card>
     );

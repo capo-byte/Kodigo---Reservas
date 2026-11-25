@@ -9,15 +9,20 @@ import {
 } from '@/types/booking.contracts';
 import {
     mockCancelBooking,
+    mockConfirmBookingPayment,
     mockCreateBooking,
     mockGetAvailableSlots,
     mockGetBookingByToken,
+    mockGetBookingHistory,
     mockGetSalonProfile,
 } from './mocks/salon.mock';
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
+const BOOKING_TOKENS_STORAGE_KEY = 'kodigo_booking_tokens';
 
 export const bookingService = {
+    usesMocks: USE_MOCKS,
+
     async getSalonProfile(slug: string): Promise<SalonProfile> {
         if (USE_MOCKS) {
             return mockGetSalonProfile(slug);
@@ -45,13 +50,56 @@ export const bookingService = {
     async createBooking(
         payload: CreateBookingPayload
     ): Promise<CreateBookingResponse> {
-        if (USE_MOCKS) {
-            return mockCreateBooking(payload);
+        const booking = USE_MOCKS
+            ? await mockCreateBooking(payload)
+            : await apiClient<CreateBookingResponse>('/bookings', {
+                  method: 'POST',
+                  body: JSON.stringify(payload),
+              });
+
+        if (typeof window !== 'undefined') {
+            try {
+                const rawTokens = localStorage.getItem(BOOKING_TOKENS_STORAGE_KEY);
+                const tokens: string[] = rawTokens ? JSON.parse(rawTokens) : [];
+                if (!tokens.includes(booking.manageToken)) {
+                    localStorage.setItem(
+                        BOOKING_TOKENS_STORAGE_KEY,
+                        JSON.stringify([...tokens, booking.manageToken])
+                    );
+                }
+            } catch (error) {
+                console.error('[BookingHistory] No se pudo guardar el acceso a la cita:', error);
+            }
         }
-        return apiClient<CreateBookingResponse>('/bookings', {
-            method: 'POST',
-            body: JSON.stringify(payload),
-        });
+
+        return booking;
+    },
+
+    async getBookingHistory(salonSlug?: string): Promise<BookingDetails[]> {
+        if (USE_MOCKS) {
+            return mockGetBookingHistory(salonSlug);
+        }
+        if (typeof window === 'undefined') {
+            return [];
+        }
+
+        const rawTokens = localStorage.getItem(BOOKING_TOKENS_STORAGE_KEY);
+        const tokens: string[] = rawTokens ? JSON.parse(rawTokens) : [];
+        const bookings = await Promise.all(tokens.map((token) => this.getBookingByToken(token)));
+
+        return bookings
+            .filter((booking) => !salonSlug || booking.salon.slug === salonSlug)
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+
+    async confirmMockPayment(
+        manageToken: string,
+        paymentMethod: 'LOCAL' | 'CARD'
+    ): Promise<BookingDetails> {
+        if (!USE_MOCKS) {
+            throw new Error('La confirmación simulada solo está disponible con los mocks activos.');
+        }
+        return mockConfirmBookingPayment(manageToken, paymentMethod);
     },
 
     async getBookingByToken(token: string): Promise<BookingDetails> {
