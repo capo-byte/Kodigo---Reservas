@@ -4,24 +4,168 @@
 
 `db/migrations/001_core.sql` define el esquema inicial. Las migraciones se aplican por nombre en una transacción con bloqueo consultivo para evitar ejecuciones simultáneas.
 
+### Diagrama entidad-relación
+
+Cada entidad muestra los campos y tipos de PostgreSQL. **PK** indica clave primaria, **FK** indica clave foránea y **UK** indica una columna única. Los campos marcados como «opcional» admiten NULL. Una línea continua indica una relación identificadora y una línea discontinua indica que la FK queda total o parcialmente fuera de la PK de la tabla hija.
+
 ```mermaid
 erDiagram
-    BUSINESSES ||--o{ BRANCHES : contiene
-    BUSINESSES ||--o{ MEMBERSHIPS : agrupa
-    USERS ||--o{ MEMBERSHIPS : integra
-    USERS ||--o{ ACCESS_TOKENS : autentica
-    MEMBERSHIPS ||--o{ BRANCH_ROLES : asigna
-    BRANCHES ||--o{ BRANCH_ROLES : delimita
-    BRANCHES ||--o{ SERVICES : ofrece
-    BRANCHES ||--o{ SCHEDULES : configura
-    BRANCHES ||--o{ BREAKS : configura
-    SERVICES ||--o{ APPOINTMENTS : ofrece
-    APPOINTMENTS ||--o| OCCUPATIONS : reclama
-    APPOINTMENTS ||--o{ PAYMENTS : registra
-    PAYMENTS ||--o{ PAYMENT_REVIEWS : requiere
-    PAYMENTS ||--o| REFUNDS : compensa
-    BRANCHES ||--o{ IDEMPOTENCY_OPERATIONS : conserva
+    direction LR
+    businesses {
+        uuid id PK
+        text slug UK
+    }
+    branches {
+        uuid business_id PK, FK
+        uuid id PK
+        text name
+    }
+    users {
+        uuid id PK
+        boolean platform_admin
+    }
+    access_tokens {
+        bytea digest PK
+        uuid user_id FK
+        timestamptz expires_at
+    }
+    memberships {
+        uuid business_id PK, FK
+        uuid user_id PK, FK
+        boolean active
+    }
+    branch_roles {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        uuid user_id PK, FK
+        text role
+    }
+    services {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        uuid id PK
+        text name
+        bigint price_minor
+        boolean active
+    }
+    schedules {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        smallint weekday PK
+        smallint branch_open
+        smallint branch_close
+        smallint labor_open
+        smallint labor_close
+    }
+    breaks {
+        uuid id PK
+        uuid business_id FK
+        uuid branch_id FK
+        smallint weekday
+        smallint starts_minute
+        smallint ends_minute
+    }
+    appointments {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        uuid id PK
+        uuid service_id FK
+        text first_name
+        text last_name
+        bigint price_minor
+        timestamptz starts_at
+        text status
+        timestamptz expires_at "opcional"
+        boolean rescheduled
+    }
+    occupations {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        timestamptz starts_at PK, FK
+        uuid appointment_id FK
+    }
+    payments {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        uuid id PK
+        uuid appointment_id FK
+        text reference
+        text status
+        text recipient
+        bigint amount_minor
+        text method
+        boolean requires_review
+    }
+    payment_reviews {
+        uuid id PK
+        uuid business_id FK
+        uuid branch_id FK
+        uuid payment_id FK
+        text reason
+        timestamptz created_at
+        timestamptz resolved_at "opcional"
+    }
+    refunds {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        uuid id PK
+        uuid payment_id FK
+        uuid authorized_by FK
+        uuid issued_by FK "opcional"
+    }
+    idempotency_operations {
+        uuid business_id PK, FK
+        uuid branch_id PK, FK
+        text actor PK
+        text operation PK
+        text key PK
+        text fingerprint
+        jsonb response
+    }
+    businesses ||--o{ branches : "agrupa"
+    users ||..o{ access_tokens : "autentica"
+    businesses ||--o{ memberships : "tiene miembros"
+    users ||--o{ memberships : "tiene membresías"
+    branches ||--o{ branch_roles : "delimita roles"
+    memberships ||--o{ branch_roles : "recibe roles"
+    branches ||--o{ services : "ofrece"
+    branches ||--o{ schedules : "configura horarios"
+    branches ||..o{ breaks : "configura descansos"
+    services ||..o{ appointments : "se reserva en"
+    appointments ||..o| occupations : "ocupa"
+    appointments ||..o{ payments : "recibe pagos"
+    payments ||..o{ payment_reviews : "tiene revisiones"
+    users ||..o{ refunds : "autoriza"
+    users |o..o{ refunds : "emite"
+    payments ||..o| refunds : "puede reembolsarse"
+    branches ||--o{ idempotency_operations : "registra operaciones"
 ```
+
+### Claves y restricciones por tabla
+
+Las columnas agrupadas entre paréntesis forman una sola restricción. En cada FK compuesta, las columnas se corresponden por posición con las de la tabla referenciada.
+
+| Tabla | Clave primaria | Claves foráneas | Unicidad adicional |
+|---|---|---|---|
+| `businesses` | `(id)` | — | `(slug)` |
+| `branches` | `(business_id, id)` | `(business_id)` → `businesses(id)` | — |
+| `users` | `(id)` | — | — |
+| `access_tokens` | `(digest)` | `(user_id)` → `users(id)` | — |
+| `memberships` | `(business_id, user_id)` | `(business_id)` → `businesses(id)`<br>`(user_id)` → `users(id)` | — |
+| `branch_roles` | `(business_id, branch_id, user_id)` | `(business_id, branch_id)` → `branches(business_id, id)`<br>`(business_id, user_id)` → `memberships(business_id, user_id)` | — |
+| `services` | `(business_id, branch_id, id)` | `(business_id, branch_id)` → `branches(business_id, id)` | — |
+| `schedules` | `(business_id, branch_id, weekday)` | `(business_id, branch_id)` → `branches(business_id, id)` | — |
+| `breaks` | `(id)` | `(business_id, branch_id)` → `branches(business_id, id)` | — |
+| `appointments` | `(business_id, branch_id, id)` | `(business_id, branch_id, service_id)` → `services(business_id, branch_id, id)` | `(business_id, branch_id, id, starts_at)` |
+| `occupations` | `(business_id, branch_id, starts_at)` | `(business_id, branch_id, appointment_id, starts_at)` → `appointments(business_id, branch_id, id, starts_at)` | `(business_id, branch_id, appointment_id)` |
+| `payments` | `(business_id, branch_id, id)` | `(business_id, branch_id, appointment_id)` → `appointments(business_id, branch_id, id)` | `(business_id, branch_id, recipient, reference)` |
+| `payment_reviews` | `(id)` | `(business_id, branch_id, payment_id)` → `payments(business_id, branch_id, id)` | `(business_id, branch_id, payment_id, reason)` |
+| `refunds` | `(business_id, branch_id, id)` | `(authorized_by)` → `users(id)`<br>`(issued_by)` → `users(id)`<br>`(business_id, branch_id, payment_id)` → `payments(business_id, branch_id, id)` | `(business_id, branch_id, payment_id)` |
+| `idempotency_operations` | `(business_id, branch_id, actor, operation, key)` | `(business_id, branch_id)` → `branches(business_id, id)` | — |
+
+- `occupations` permite una sola ocupación por sucursal e instante. Su FK de cuatro columnas exige que el inicio coincida con el de la cita referenciada.
+- `schedules` y `breaks` aceptan días del 1 al 6, de lunes a sábado. Las horas se guardan como minutos desde medianoche.
+- `schema_migrations` es una tabla interna del ejecutor de migraciones. Contiene el campo `name text` como PK y carece de relaciones con las tablas del dominio.
 
 No hay asignación de empleados ni otros recursos. La capacidad es un espacio simultáneo por sucursal. Se conserva el precio en la cita para que una modificación del catálogo afecte únicamente a las reservas futuras.
 
