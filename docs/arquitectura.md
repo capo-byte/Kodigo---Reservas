@@ -210,22 +210,44 @@ La recepcionista puede emitir un reembolso y solo el administrador de sucursal p
 
 ## API
 
-Las rutas administrativas requieren `Authorization: Bearer <token>`. Las operaciones POST requieren `Idempotency-Key` de 16 a 128 caracteres alfanuméricos, guiones o guiones bajos. Genera una clave aleatoria por operación y reutilízala en los reintentos de esa misma operación.
+### Convenciones de solicitud y respuesta
 
-| Método y ruta | Entrada principal | Resultado |
-|---|---|---|
-| GET `/negocios/:slug/sucursales/:branchId/disponibilidad` | `date` en YYYY-MM-DD y `serviceId` | Lista `slots` con `time` local y `startsAt` en ISO 8601. |
-| POST `/negocios/:slug/sucursales/:branchId/reservas` | `firstName`, `lastName`, `serviceId`, `startsAt` y `paymentMode` opcional (`in_person`, `online`) | 201 con identificador, estado, inicio y vencimiento si aplica. |
-| GET `/admin/negocios/:businessId/sucursales/:branchId/agenda` | `date` en YYYY-MM-DD | Citas de la sucursal para ese día. |
-| POST `/admin/negocios/:businessId/sucursales/:branchId/reservas/:appointmentId/reprogramacion` | Nuevo `startsAt` | Cita actualizada. |
-| POST `/admin/negocios/:businessId/sucursales/:branchId/reservas/:appointmentId/inasistencia` o `/completar` | Sin cuerpo | Identificador y estado nuevo. |
-| POST `/admin/negocios/:businessId/sucursales/:branchId/reservas/:appointmentId/pagos` | `reference`, `recipient` (`branch`, `platform`), `status` (`pending`, `failed`, `paid`), `amountMinor`, `method` (`external`, `cash`) | Identificador, estado y marca de revisión. |
-| GET `/admin/negocios/:businessId/sucursales/:branchId/pagos/revisiones` | Sin cuerpo | Incidencias de pago pendientes de revisión. |
-| POST `/admin/negocios/:businessId/sucursales/:branchId/pagos/:paymentId/reembolso/autorizar` o `/emitir` | Sin cuerpo | Identificador del reembolso y usuarios que actuaron. |
-| PATCH `/admin/negocios/:businessId/sucursales/:branchId/servicios/:serviceId/precio` | `priceMinor` | Identificador y precio actualizado. |
-| GET `/admin/negocios/:businessId/sucursales/:branchId/ingresos` | Sin cuerpo | Importes brutos y reembolsados por receptor. |
+- **Ruta** indica valores que sustituyen segmentos como `:branchId`. **Consulta** indica parámetros después de `?`. **Cuerpo** indica propiedades de un objeto JSON enviado con `Content-Type: application/json`. Todos los parámetros enumerados son obligatorios salvo donde se indique lo contrario.
+- `UUID` es una cadena con formato UUID. Una **fecha local** es una cadena `AAAA-MM-DD` interpretada en UTC−6. Un **instante** se envía como cadena ISO 8601 con zona explícita, por ejemplo `2026-11-25T08:00:00-06:00`. Los instantes devueltos se serializan en UTC con sufijo `Z`.
+- Todas las rutas bajo `/admin` requieren la cabecera `Authorization` de tipo cadena, con el formato `Bearer <token>`. El token debe estar vigente y el usuario debe tener el rol indicado para la sucursal o contar con el permiso de plataforma cuando el endpoint lo admite. Consulta la [matriz de permisos](#matriz-de-permisos).
+- Todos los `POST` requieren la cabecera `Idempotency-Key` de tipo cadena, con 16 a 128 letras, números, guiones o guiones bajos. Usa una clave nueva por operación y reutilízala con los mismos datos al reintentar.
+- Los estados de cita son cadenas con uno de estos valores: `pending`, `confirmed`, `completed`, `cancelled`, `expired` o `no_show`. Los importes de entrada se envían como enteros en unidades menores. Los importes de salida documentados como cadenas se devuelven como texto decimal.
 
-Los errores se devuelven como `{ "error": "mensaje" }`. Los códigos principales son 400 para entrada inválida, 401 para autenticación, 403 para permisos, 404 para recurso ausente y 409 para conflictos de disponibilidad, estado o idempotencia.
+### Rutas públicas
+
+| Método y ruta | Propósito y dependencias | Parámetros de la solicitud | Respuesta exitosa y tipos |
+|---|---|---|---|
+| GET `/negocios/:slug/sucursales/:branchId/disponibilidad` | Calcula los inicios reservables de un día para un servicio activo de la sucursal indicada. Usa la hora de PostgreSQL, los horarios, los descansos, las ocupaciones y las retenciones vigentes. La consulta no reserva un espacio. | **Ruta** — `slug` cadena de 1 a 100 caracteres, `branchId` UUID.<br>**Consulta** — `date` fecha local, `serviceId` UUID. | **200** — objeto con `slots`, arreglo de objetos con `time` cadena local `HH:mm` y `startsAt` instante. El arreglo puede estar vacío. |
+| POST `/negocios/:slug/sucursales/:branchId/reservas` | Crea y confirma una cita pública. Requiere un servicio activo de esa sucursal, conserva su precio y vuelve a comprobar la disponibilidad dentro de la transacción antes de ocupar el espacio. El pago en línea requiere un servicio con precio mayor que cero y genera una retención de 15 minutos. | **Ruta** — `slug` cadena de 1 a 100 caracteres, `branchId` UUID.<br>**Cuerpo** — `firstName` y `lastName` cadenas de 1 a 100 caracteres tras recortar espacios, `serviceId` UUID, `startsAt` instante, `paymentMode` cadena opcional `in_person` o `online`, con `in_person` por defecto. | **201** — `id` UUID de cita, `status` cadena `confirmed`, `starts_at` instante y `expires_at` instante para la retención o `null` para el pago en el local. |
+
+### Agenda, citas y catálogo
+
+| Método y ruta | Propósito y dependencias | Parámetros de la solicitud | Respuesta exitosa y tipos |
+|---|---|---|---|
+| GET `/admin/negocios/:businessId/sucursales/:branchId/agenda` | Lista las citas de la sucursal cuyo inicio cae en el día local solicitado, con sus nombres, servicio y estado. Requiere acceso a la agenda de esa sucursal. | **Ruta** — `businessId` y `branchId` UUID.<br>**Consulta** — `date` fecha local. | **200** — objeto con `appointments`, arreglo de objetos con `id` y `service_id` UUID, `first_name` y `last_name` cadenas, `starts_at` instante y `status` estado de cita. |
+| POST `/admin/negocios/:businessId/sucursales/:branchId/reservas/:appointmentId/reprogramacion` | Mueve una cita confirmada, futura y que aún no se haya reprogramado. Requiere acceso a la sucursal y un nuevo espacio disponible posterior al inicio original, como máximo 48 horas después. El movimiento de la cita y de la ocupación ocurre en una sola transacción. | **Ruta** — `businessId`, `branchId` y `appointmentId` UUID.<br>**Cuerpo** — `startsAt` instante. | **200** — `id` UUID de cita, `status` cadena `confirmed`, `starts_at` instante, `expires_at` instante o `null` y `rescheduled` booleano `true`. |
+| POST `/admin/negocios/:businessId/sucursales/:branchId/reservas/:appointmentId/inasistencia` | Marca una cita confirmada como inasistencia, elimina su vencimiento y libera su ocupación para que el espacio se pueda ofrecer de nuevo si sigue dentro de las reglas de disponibilidad. Requiere acceso a la sucursal. | **Ruta** — `businessId`, `branchId` y `appointmentId` UUID.<br>Sin cuerpo. | **200** — `id` UUID de cita y `status` cadena `no_show`. |
+| POST `/admin/negocios/:businessId/sucursales/:branchId/reservas/:appointmentId/completar` | Registra que se prestó el servicio. Requiere el permiso de completar citas, una cita confirmada, al menos 20 minutos transcurridos desde su inicio y que no tenga una retención activa. | **Ruta** — `businessId`, `branchId` y `appointmentId` UUID.<br>Sin cuerpo. | **200** — `id` UUID de cita y `status` cadena `completed`. |
+| PATCH `/admin/negocios/:businessId/sucursales/:branchId/servicios/:serviceId/precio` | Actualiza el precio de un servicio de la sucursal para las próximas reservas. Requiere permiso de edición de precios. Cada cita conserva el importe registrado al reservar. | **Ruta** — `businessId`, `branchId` y `serviceId` UUID.<br>**Cuerpo** — `priceMinor` entero mayor o igual a cero, en unidades menores. | **200** — `id` UUID del servicio y `price_minor` cadena decimal con el nuevo importe. |
+
+### Pagos, revisiones e ingresos
+
+| Método y ruta | Propósito y dependencias | Parámetros de la solicitud | Respuesta exitosa y tipos |
+|---|---|---|---|
+| POST `/admin/negocios/:businessId/sucursales/:branchId/reservas/:appointmentId/pagos` | Registra o actualiza un pago reportado para una cita existente. Requiere permiso de registro, una referencia válida para el receptor y un importe igual al precio guardado en la cita. Los pagos pendientes, fallidos, tardíos o duplicados pueden generar revisiones. Un pago válido y sin incidencias puede confirmar una cita pendiente o quitar la retención de una confirmada. | **Ruta** — `businessId`, `branchId` y `appointmentId` UUID.<br>**Cuerpo** — `reference` cadena de 1 a 128 caracteres tras recortar espacios, `recipient` cadena `branch` o `platform`, `status` cadena `pending`, `failed` o `paid`, `amountMinor` entero positivo en unidades menores y `method` cadena `external` o `cash`. | **200** — `id` UUID del pago, `status` cadena `pending`, `failed` o `paid`, y `requires_review` booleano. |
+| GET `/admin/negocios/:businessId/sucursales/:branchId/pagos/revisiones` | Obtiene las incidencias sin resolver de la sucursal, junto con el pago y la cita asociados. Requiere permiso de acceso a los pagos de la sucursal. | **Ruta** — `businessId` y `branchId` UUID. | **200** — objeto con `reviews`, arreglo de objetos con `id`, `payment_id` y `appointment_id` UUID, `reason` cadena `pending`, `failed`, `late` o `duplicate`, `created_at` instante, `reference` cadena y `amount_minor` cadena decimal. |
+| POST `/admin/negocios/:businessId/sucursales/:branchId/pagos/:paymentId/reembolso/autorizar` | Registra la autorización del reembolso de un pago ya registrado como `paid`. Solo el administrador de la sucursal puede hacerlo. Si hay una autorización previa para ese pago, devuelve el registro existente. | **Ruta** — `businessId`, `branchId` y `paymentId` UUID.<br>Sin cuerpo. | **200** — `id` UUID del reembolso, `authorized_by` UUID del administrador e `issued_by` UUID del usuario que lo emitió o `null` si sigue pendiente. |
+| POST `/admin/negocios/:businessId/sucursales/:branchId/pagos/:paymentId/reembolso/emitir` | Registra la emisión de un reembolso previamente autorizado y cierra las revisiones abiertas por pago tardío o duplicado asociadas al pago. Requiere el rol de recepcionista de la sucursal. La devolución externa se gestiona por separado. | **Ruta** — `businessId`, `branchId` y `paymentId` UUID.<br>Sin cuerpo. | **200** — `id` UUID del reembolso, `authorized_by` UUID del administrador e `issued_by` UUID del usuario que registró la emisión. |
+| GET `/admin/negocios/:businessId/sucursales/:branchId/ingresos` | Suma los pagos registrados como `paid` en la sucursal por receptor. El total reembolsado incluye los pagos con emisión de reembolso registrada. Requiere permiso para consultar ingresos. | **Ruta** — `businessId` y `branchId` UUID. | **200** — objeto con `income`, arreglo de objetos con `recipient` cadena `branch` o `platform`, y `gross_minor` y `refunded_minor` cadenas decimales. |
+
+### Respuestas de error
+
+Los errores de los handlers se devuelven como `{ "error": "mensaje" }`, con una cadena en `error`. Los códigos principales son **400** para entrada inválida, **401** para autenticación, **403** para permisos, **404** para recurso ausente y **409** para conflictos de disponibilidad, estado o idempotencia.
 
 ## Datos iniciales
 
