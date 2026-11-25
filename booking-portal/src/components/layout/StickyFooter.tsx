@@ -7,6 +7,7 @@ interface StickyFooterProps {
     summarySublabel?: string;
     actionLabel: string;
     onAction: () => void;
+    embedded?: boolean;
     disabled?: boolean;
     loading?: boolean;
     onBack?: () => void;
@@ -17,12 +18,15 @@ export function StickyFooter({
     summarySublabel,
     actionLabel,
     onAction,
+    embedded = false,
     disabled = false,
     loading = false,
     onBack,
 }: StickyFooterProps) {
     return (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div
+            className={`${embedded ? 'relative' : 'fixed inset-x-0 bottom-0'} z-30 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80`}
+        >
             <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                     {summaryLabel ? (

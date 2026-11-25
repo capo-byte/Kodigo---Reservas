@@ -1,5 +1,8 @@
 import { setHours, setMinutes, startOfDay } from 'date-fns';
 import {
+    BookingDetails,
+    CancelBookingPayload,
+    CancelBookingResponse,
     CreateBookingPayload,
     CreateBookingResponse,
     SalonProfile,
@@ -132,20 +135,205 @@ export async function mockGetAvailableSlots(params: {
     return slots;
 }
 
+// Almacenamiento en memoria para pruebas de gestión y cancelación con manageToken
+const BOOKINGS_STORE = new Map<string, BookingDetails>();
+const STORAGE_KEY = 'kodigo_bookings_store';
+
+function getStoredBookings(): Record<string, BookingDetails> {
+    if (typeof window !== 'undefined') {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            return raw ? JSON.parse(raw) : {};
+        } catch {
+            return {};
+        }
+    }
+    return {};
+}
+
+function saveStoredBooking(token: string, booking: BookingDetails) {
+    BOOKINGS_STORE.set(token, booking);
+    if (typeof window !== 'undefined') {
+        try {
+            const store = getStoredBookings();
+            store[token] = booking;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        } catch (e) {
+            console.error('[MockStore] Error al guardar en localStorage:', e);
+        }
+    }
+}
+
 export async function mockCreateBooking(
     payload: CreateBookingPayload
 ): Promise<CreateBookingResponse> {
-    void payload;
     await sleep(600);
 
+    const bookingId = `bk_${Math.random().toString(36).substring(2, 9)}`;
+    const manageToken = `tok_${crypto.randomUUID()}`;
+    const status = MOCK_SALON.paymentPolicy === 'FREE' ? 'CONFIRMED' : 'PENDING_PAYMENT';
+
+    const service = MOCK_SALON.services.find((s) => s.id === payload.serviceId) ?? MOCK_SALON.services[0];
+    const additionalServices = (payload.additionalServiceIds ?? [])
+        .map((id) => MOCK_SALON.services.find((s) => s.id === id))
+        .filter((s): s is NonNullable<typeof s> => Boolean(s));
+
+    const totalDuration =
+        service.durationMinutes +
+        additionalServices.reduce((acc, s) => acc + s.durationMinutes, 0);
+
+    const totalPrice =
+        service.price + additionalServices.reduce((acc, s) => acc + s.price, 0);
+
+    const staff =
+        MOCK_SALON.staff.find((m) => m.id === payload.staffId) ??
+        MOCK_SALON.staff[0];
+
+    const startTime = new Date(payload.startTime);
+    const endTime = new Date(startTime.getTime() + totalDuration * 60000);
+
+    const booking: BookingDetails = {
+        id: bookingId,
+        manageToken,
+        status,
+        createdAt: new Date().toISOString(),
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        salon: {
+            id: MOCK_SALON.id,
+            name: MOCK_SALON.name,
+            slug: MOCK_SALON.slug,
+            address: MOCK_SALON.address,
+            timezone: MOCK_SALON.timezone,
+            googleMapsUrl: MOCK_SALON.googleMapsUrl,
+            logoUrl: MOCK_SALON.logoUrl,
+            currency: MOCK_SALON.currency,
+        },
+        service: {
+            id: service.id,
+            name: service.name,
+            durationMinutes: service.durationMinutes,
+            price: service.price,
+            currency: MOCK_SALON.currency,
+        },
+        additionalServices: additionalServices.map((s) => ({
+            id: s.id,
+            name: s.name,
+            durationMinutes: s.durationMinutes,
+            price: s.price,
+            currency: MOCK_SALON.currency,
+        })),
+        staff: {
+            id: staff.id,
+            name: staff.name,
+            role: staff.role,
+            avatarUrl: staff.avatarUrl,
+        },
+        customer: payload.customer,
+        paymentPolicy: MOCK_SALON.paymentPolicy,
+        depositAmount:
+            MOCK_SALON.paymentPolicy === 'DEPOSIT'
+                ? Number(((totalPrice * (MOCK_SALON.depositPercentage ?? 25)) / 100).toFixed(2))
+                : undefined,
+    };
+
+    saveStoredBooking(manageToken, booking);
+
     return {
-        bookingId: `bk_${Math.random().toString(36).substring(2, 9)}`,
-        manageToken: `tok_${crypto.randomUUID()}`,
-        // Si el salón cobra anticipo, devolvemos PENDING_PAYMENT para probar el slot de Stripe
-        status: MOCK_SALON.paymentPolicy === 'FREE' ? 'CONFIRMED' : 'PENDING_PAYMENT',
+        bookingId,
+        manageToken,
+        status,
         stripeClientSecret:
             MOCK_SALON.paymentPolicy === 'FREE'
                 ? undefined
                 : 'pi_mock_secret_123456789',
+    };
+}
+
+export async function mockGetBookingByToken(token: string): Promise<BookingDetails> {
+    await sleep(350);
+
+    // 1. Comprobar primero en localStorage si estamos en entorno navegador
+    if (typeof window !== 'undefined') {
+        const stored = getStoredBookings();
+        if (stored[token]) {
+            BOOKINGS_STORE.set(token, stored[token]);
+            return stored[token];
+        }
+    }
+
+    // 2. Comprobar en memoria
+    const existing = BOOKINGS_STORE.get(token);
+    if (existing) {
+        return existing;
+    }
+
+    // Si se accede con un token de prueba que no está en el store temporal,
+    // generamos un mock coherente para garantizar que la pantalla siempre sea testeable.
+    const service = MOCK_SALON.services[0];
+    const staff = MOCK_SALON.staff[0];
+    const now = new Date();
+    const scheduledTime = new Date(now.getTime() + 86400000 * 2); // 2 días después
+    scheduledTime.setHours(14, 0, 0, 0);
+
+    const fallbackBooking: BookingDetails = {
+        id: `bk_${token.slice(0, 8)}`,
+        manageToken: token,
+        status: 'CONFIRMED',
+        createdAt: new Date().toISOString(),
+        startTime: scheduledTime.toISOString(),
+        endTime: new Date(scheduledTime.getTime() + service.durationMinutes * 60000).toISOString(),
+        salon: {
+            id: MOCK_SALON.id,
+            name: MOCK_SALON.name,
+            slug: MOCK_SALON.slug,
+            address: MOCK_SALON.address,
+            timezone: MOCK_SALON.timezone,
+            googleMapsUrl: MOCK_SALON.googleMapsUrl,
+            logoUrl: MOCK_SALON.logoUrl,
+            currency: MOCK_SALON.currency,
+        },
+        service: {
+            id: service.id,
+            name: service.name,
+            durationMinutes: service.durationMinutes,
+            price: service.price,
+            currency: MOCK_SALON.currency,
+        },
+        staff: {
+            id: staff.id,
+            name: staff.name,
+            role: staff.role,
+            avatarUrl: staff.avatarUrl,
+        },
+        customer: {
+            name: 'Cliente Invitado',
+            phone: '+503 7123 4567',
+            email: 'cliente@ejemplo.com',
+        },
+        paymentPolicy: MOCK_SALON.paymentPolicy,
+        depositAmount: 3.75,
+    };
+
+    saveStoredBooking(token, fallbackBooking);
+    return fallbackBooking;
+}
+
+export async function mockCancelBooking(
+    payload: CancelBookingPayload
+): Promise<CancelBookingResponse> {
+    await sleep(400);
+
+    const booking = await mockGetBookingByToken(payload.manageToken);
+    booking.status = 'CANCELLED';
+    booking.cancelledAt = new Date().toISOString();
+    booking.cancellationReason = payload.reason || 'Cancelado por el cliente';
+
+    saveStoredBooking(payload.manageToken, booking);
+
+    return {
+        success: true,
+        message: 'Tu cita ha sido cancelada exitosamente.',
+        booking,
     };
 }

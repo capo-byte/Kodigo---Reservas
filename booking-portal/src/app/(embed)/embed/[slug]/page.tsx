@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { bookingService } from '@/services/booking.service';
+import { BookingWizard } from '@/components/booking/BookingWizard';
+import { EmbedIframeBridge } from '@/components/embed/EmbedIframeBridge';
 
 interface EmbedPageProps {
     params: Promise<{ slug: string }>;
@@ -33,7 +35,7 @@ export default async function SalonEmbedPage({ params }: EmbedPageProps) {
     }
 
     return (
-        <main className="mx-auto min-h-screen max-w-xl p-4">
+        <main className="mx-auto max-w-xl space-y-4 p-4">
             <header className="mb-4 flex items-center gap-3 border-b pb-3">
                 {salon.logoUrl && (
                     <img
@@ -48,9 +50,8 @@ export default async function SalonEmbedPage({ params }: EmbedPageProps) {
                 </div>
             </header>
 
-            <section className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-                Widget de reserva integrado para <strong className="text-foreground">{salon.slug}</strong> ({salon.services.length} servicios disponibles).
-            </section>
+            <BookingWizard salon={salon} embedded />
+            <EmbedIframeBridge slug={salon.slug} />
         </main>
     );
 }

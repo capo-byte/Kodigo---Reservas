@@ -1,13 +1,17 @@
 import { apiClient } from '@/lib/api-client';
 import {
+    BookingDetails,
+    CancelBookingResponse,
     CreateBookingPayload,
     CreateBookingResponse,
     SalonProfile,
     TimeSlot,
 } from '@/types/booking.contracts';
 import {
+    mockCancelBooking,
     mockCreateBooking,
     mockGetAvailableSlots,
+    mockGetBookingByToken,
     mockGetSalonProfile,
 } from './mocks/salon.mock';
 
@@ -47,6 +51,26 @@ export const bookingService = {
         return apiClient<CreateBookingResponse>('/bookings', {
             method: 'POST',
             body: JSON.stringify(payload),
+        });
+    },
+
+    async getBookingByToken(token: string): Promise<BookingDetails> {
+        if (USE_MOCKS) {
+            return mockGetBookingByToken(token);
+        }
+        return apiClient<BookingDetails>(`/bookings/manage/${token}`);
+    },
+
+    async cancelBooking(
+        token: string,
+        reason?: string
+    ): Promise<CancelBookingResponse> {
+        if (USE_MOCKS) {
+            return mockCancelBooking({ manageToken: token, reason });
+        }
+        return apiClient<CancelBookingResponse>(`/bookings/manage/${token}/cancel`, {
+            method: 'POST',
+            body: JSON.stringify({ reason }),
         });
     },
 };

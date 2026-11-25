@@ -21,13 +21,16 @@ export interface SalonProfile {
     id: string;
     slug: string;
     name: string;
+    tagline?: string;         // Ej. "Cortes de precisión, barbería clásica y cuidado capilar"
     logoUrl?: string;
+    coverImageUrl?: string;   // Banner superior del salón
     address: string;
     googleMapsUrl?: string;
-    currency: string; // ej. "USD"
-    timezone: string; // Formato IANA, ej. "America/El_Salvador"
+    phone?: string;           // Contacto rápido del salón
+    currency: string;
+    timezone: string;
     paymentPolicy: PaymentPolicy;
-    depositPercentage?: number; // ej. 20 (si paymentPolicy === 'DEPOSIT')
+    depositPercentage?: number;
     services: ServiceItem[];
     staff: StaffMember[];
 }
@@ -41,6 +44,7 @@ export interface TimeSlot {
 export interface CreateBookingPayload {
     salonSlug: string;
     serviceId: string;
+    additionalServiceIds?: string[];
     staffId: string | 'ANY';
     startTime: string; // ISO 8601 UTC
     customer: {
@@ -48,6 +52,7 @@ export interface CreateBookingPayload {
         phone: string;
         email: string;
     };
+    paymentMethod?: 'LOCAL' | 'CARD';
 }
 
 export interface CreateBookingResponse {
@@ -55,4 +60,65 @@ export interface CreateBookingResponse {
     manageToken: string; // Token único para cancelar/reprogramar sin cuenta
     status: 'CONFIRMED' | 'PENDING_PAYMENT';
     stripeClientSecret?: string; // Solo presente si status === 'PENDING_PAYMENT'
+}
+
+export type BookingStatus = 'CONFIRMED' | 'PENDING_PAYMENT' | 'CANCELLED';
+
+export interface BookingDetails {
+    id: string;
+    manageToken: string;
+    status: BookingStatus;
+    createdAt: string;
+    startTime: string; // ISO 8601 UTC
+    endTime: string;   // ISO 8601 UTC
+    salon: {
+        id: string;
+        name: string;
+        slug: string;
+        address: string;
+        timezone: string;
+        googleMapsUrl?: string;
+        logoUrl?: string;
+        currency: string;
+    };
+    service: {
+        id: string;
+        name: string;
+        durationMinutes: number;
+        price: number;
+        currency: string;
+    };
+    additionalServices?: Array<{
+        id: string;
+        name: string;
+        durationMinutes: number;
+        price: number;
+        currency: string;
+    }>;
+    staff: {
+        id: string;
+        name: string;
+        role: string;
+        avatarUrl?: string;
+    };
+    customer: {
+        name: string;
+        phone: string;
+        email: string;
+    };
+    paymentPolicy: PaymentPolicy;
+    depositAmount?: number;
+    cancelledAt?: string;
+    cancellationReason?: string;
+}
+
+export interface CancelBookingPayload {
+    manageToken: string;
+    reason?: string;
+}
+
+export interface CancelBookingResponse {
+    success: boolean;
+    message: string;
+    booking: BookingDetails;
 }

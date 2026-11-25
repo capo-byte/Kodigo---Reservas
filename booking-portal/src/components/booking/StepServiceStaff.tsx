@@ -11,9 +11,9 @@ interface StepServiceStaffProps {
     services: ServiceItem[];
     staff: StaffMember[];
     currency: string;
-    selectedServiceId: string | null;
+    selectedServiceIds: string[];
     selectedStaffId: string | 'ANY';
-    onSelectService: (serviceId: string) => void;
+    onToggleService: (serviceId: string) => void;
     onSelectStaff: (staffId: string | 'ANY') => void;
 }
 
@@ -21,9 +21,9 @@ export function StepServiceStaff({
     services,
     staff,
     currency,
-    selectedServiceId,
+    selectedServiceIds,
     selectedStaffId,
-    onSelectService,
+    onToggleService,
     onSelectStaff,
 }: StepServiceStaffProps) {
     const groupedServices = useMemo(() => {
@@ -36,16 +36,23 @@ export function StepServiceStaff({
         return Array.from(map.entries());
     }, [services]);
 
-    const selectedService = useMemo(
-        () => services.find((s) => s.id === selectedServiceId) ?? null,
-        [services, selectedServiceId]
+    const selectedServices = useMemo(
+        () => services.filter((s) => selectedServiceIds.includes(s.id)),
+        [services, selectedServiceIds]
     );
 
-    // Solo mostramos especialistas habilitados para el servicio seleccionado
+    // Solo mostramos especialistas habilitados para los servicios seleccionados
     const eligibleStaff = useMemo(() => {
-        if (!selectedService) return [];
-        return staff.filter((member) => selectedService.staffIds.includes(member.id));
-    }, [selectedService, staff]);
+        if (selectedServices.length === 0) return [];
+        // Especialistas que pueden realizar el servicio principal (o todos si hay intersección)
+        const primaryService = selectedServices[0];
+        const sharedStaff = staff.filter((member) =>
+            selectedServices.every((s) => s.staffIds.includes(member.id))
+        );
+        return sharedStaff.length > 0
+            ? sharedStaff
+            : staff.filter((member) => primaryService.staffIds.includes(member.id));
+    }, [selectedServices, staff]);
 
     const formatPrice = (amount: number) =>
         new Intl.NumberFormat('es-SV', {
@@ -56,14 +63,14 @@ export function StepServiceStaff({
 
     return (
         <div className="space-y-8">
-            {/* Selección de servicio */}
+            {/* Selección de servicio (múltiple o individual) */}
             <section aria-labelledby="services-heading" className="space-y-5">
                 <div>
                     <h2 id="services-heading" className="text-lg font-semibold tracking-tight">
-                        1. Elige un servicio
+                        1. Elige uno o varios servicios
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                        Selecciona lo que deseas realizarte hoy.
+                        Toca los servicios que deseas realizarte hoy para añadirlos a tu cita.
                     </p>
                 </div>
 
@@ -76,7 +83,7 @@ export function StepServiceStaff({
 
                             <div className="grid gap-2.5">
                                 {categoryServices.map((service) => {
-                                    const isSelected = service.id === selectedServiceId;
+                                    const isSelected = selectedServiceIds.includes(service.id);
 
                                     return (
                                         <Card
@@ -84,11 +91,11 @@ export function StepServiceStaff({
                                             role="button"
                                             tabIndex={0}
                                             aria-pressed={isSelected}
-                                            onClick={() => onSelectService(service.id)}
+                                            onClick={() => onToggleService(service.id)}
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter' || e.key === ' ') {
                                                     e.preventDefault();
-                                                    onSelectService(service.id);
+                                                    onToggleService(service.id);
                                                 }
                                             }}
                                             className={cn(
@@ -138,8 +145,8 @@ export function StepServiceStaff({
                 </div>
             </section>
 
-            {/* Selección de profesional (aparece al elegir un servicio) */}
-            {selectedService && (
+            {/* Selección de profesional (aparece al elegir al menos un servicio) */}
+            {selectedServices.length > 0 && (
                 <section
                     aria-labelledby="staff-heading"
                     className="space-y-3 border-t pt-6 animate-in fade-in duration-200"

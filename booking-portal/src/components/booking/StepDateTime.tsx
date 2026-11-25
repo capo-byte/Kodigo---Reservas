@@ -8,10 +8,8 @@ import { ServiceItem, TimeSlot } from '@/types/booking.contracts';
 import {
     formatDatePill,
     formatSlotTime,
-    getBrowserTimeZone,
     getTimeZoneShortLabel,
     getUpcomingDatesInSalonTz,
-    isForeignTimeZone,
 } from '@/lib/timezone';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -42,15 +40,26 @@ export function StepDateTime({
         [salonTimeZone]
     );
 
-    const browserTz = useMemo(() => getBrowserTimeZone(), []);
-    const showForeignTzNotice = useMemo(
-        () => isForeignTimeZone(salonTimeZone),
-        [salonTimeZone]
-    );
+    const [selectedTimeZone, setSelectedTimeZone] = useState<string>(salonTimeZone);
+    const activeTimeZone = selectedTimeZone;
 
-    // Por defecto mostramos la hora local del salón (evita confusión en reservas locales/presenciales)
-    const [useClientTz, setUseClientTz] = useState(false);
-    const activeTimeZone = showForeignTzNotice && useClientTz ? browserTz : salonTimeZone;
+    const TIMEZONE_OPTIONS = useMemo(() => {
+        const options = [
+            { value: salonTimeZone, label: `Hora del salón (${salonTimeZone.split('/').pop()?.replace('_', ' ')})` },
+            { value: 'America/El_Salvador', label: 'El Salvador (GMT-6)' },
+            { value: 'America/Mexico_City', label: 'Ciudad de México (GMT-6)' },
+            { value: 'America/Bogota', label: 'Bogotá / Lima (GMT-5)' },
+            { value: 'America/New_York', label: 'Nueva York / Miami (GMT-5)' },
+            { value: 'America/Chicago', label: 'Chicago (GMT-6)' },
+            { value: 'America/Los_Angeles', label: 'Los Ángeles (GMT-8)' },
+            { value: 'America/Buenos_Aires', label: 'Buenos Aires (GMT-3)' },
+            { value: 'Europe/Madrid', label: 'Madrid / España (GMT+1)' },
+            { value: 'UTC', label: 'UTC' },
+        ];
+        return options.filter(
+            (option, index) => options.findIndex(({ value }) => value === option.value) === index
+        );
+    }, [salonTimeZone]);
 
     useEffect(() => {
         if (!selectedDate && dates.length > 0) {
@@ -94,36 +103,25 @@ export function StepDateTime({
                 </p>
             </div>
 
-            {/* Aviso discreto solo cuando el navegador está en otra zona horaria */}
-            {showForeignTzNotice && (
-                <div className="rounded-xl border bg-muted/40 p-3.5 text-xs space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-2">
-                            <Globe className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
-                            <div className="space-y-0.5">
-                                <p className="font-medium text-foreground">
-                                    Tu dispositivo está en otra zona horaria ({browserTz})
-                                </p>
-                                <p className="text-muted-foreground">
-                                    La cita se agenda en hora del salón:{' '}
-                                    <strong className="text-foreground">
-                                        {getTimeZoneShortLabel(sampleIsoForLabel, salonTimeZone)}
-                                    </strong>
-                                    .
-                                </p>
-                            </div>
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={() => setUseClientTz((prev) => !prev)}
-                            className="shrink-0 rounded-md border bg-background px-2.5 py-1.5 font-medium hover:bg-accent transition-colors"
-                        >
-                            {useClientTz ? 'Ver hora del salón' : 'Ver mi hora'}
-                        </button>
-                    </div>
+            {/* Selector interactivo de Zona Horaria */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl border bg-muted/40 p-3 text-xs">
+                <div className="flex items-center gap-2 text-foreground font-medium">
+                    <Globe className="h-4 w-4 text-primary shrink-0" />
+                    <span>Zona horaria para visualizar horarios:</span>
                 </div>
-            )}
+                <select
+                    id="timezone-select"
+                    value={selectedTimeZone}
+                    onChange={(e) => setSelectedTimeZone(e.target.value)}
+                    className="rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold text-foreground focus-visible:outline-primary shadow-sm"
+                >
+                    {TIMEZONE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                        </option>
+                    ))}
+                </select>
+            </div>
 
             {/* Selector horizontal de fechas */}
             <section aria-label="Fechas disponibles" className="space-y-2">
