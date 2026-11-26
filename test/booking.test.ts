@@ -22,6 +22,8 @@ test('reservas, concurrencia, pagos y aislamiento con PostgreSQL', { skip: !conn
   const app = makeApp(pool);
   try {
     await pool.query(await readFile(new URL('../db/migrations/001_core.sql', import.meta.url), 'utf8'));
+    await pool.query(await readFile(new URL('../db/migrations/002_anthony_stripe.sql', import.meta.url), 'utf8'));
+    await pool.query(await readFile(new URL('../db/migrations/003_stripe_refunds.sql', import.meta.url), 'utf8'));
     const business = randomUUID();
     const otherBusiness = randomUUID();
     const branch = randomUUID();

@@ -1,10 +1,13 @@
 import { Pool } from 'pg';
 import { makeApp } from './app.js';
 import { inBranch } from './booking.js';
+import { NotificationWorker, SimulatedEmailProvider } from './notifications/worker.js';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL es obligatoria');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const app = makeApp(pool);
+const notifications = new NotificationWorker(pool, new SimulatedEmailProvider());
+const app = makeApp(pool, undefined, notifications);
+notifications.start();
 
 let sweep: Promise<void> | undefined;
 const expiration = setInterval(() => {
@@ -23,6 +26,7 @@ expiration.unref();
 
 app.addHook('onClose', async () => {
   clearInterval(expiration);
+  await notifications.stop();
   await sweep;
   await pool.end();
 });
