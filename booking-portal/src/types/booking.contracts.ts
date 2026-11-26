@@ -27,6 +27,8 @@ export interface ServiceItem {
 
 export interface SalonProfile {
     id: string;
+    business_id: string;
+    branch_id: string;
     slug: string;
     name: string;
     tagline?: string;         // Ej. "Cortes de precisión, barbería clásica y cuidado capilar"
@@ -49,25 +51,34 @@ export interface TimeSlot {
     availableStaffIds: string[];
 }
 
+export type PaymentMode = 'online' | 'in_person';
+
 export interface CreateBookingPayload {
-    salonSlug: string;
+    slug: string;
+    branchId: string;
+    firstName: string;
+    lastName: string;
     serviceId: string;
-    additionalServiceIds?: string[];
-    staffId: string | 'ANY';
-    startTime: string; // ISO 8601 UTC
-    customer: {
-        name: string;
-        phone: string;
-        email: string;
-    };
-    paymentMethod?: 'LOCAL' | 'CARD';
+    startsAt: string; // ISO 8601 con offset, ej. "2026-11-25T15:00:00-06:00"
+    paymentMode?: PaymentMode;
 }
 
 export interface CreateBookingResponse {
-    bookingId: string;
-    manageToken: string; // Token único para cancelar/reprogramar sin cuenta
-    status: 'CONFIRMED' | 'PENDING_PAYMENT';
-    stripeClientSecret?: string; // Solo presente si status === 'PENDING_PAYMENT'
+    id: string;
+    status: 'confirmed' | 'pending' | 'completed' | 'cancelled' | 'expired' | 'no_show';
+    starts_at: string;
+    expires_at: string | null;
+}
+
+export interface PaymentIntentPayload {
+    appointmentId: string;
+}
+
+export interface PaymentIntentResponse {
+    paymentId: string;
+    clientSecret: string;
+    amountMinor: number;
+    status: string;
 }
 
 export type BookingStatus = 'CONFIRMED' | 'PENDING_PAYMENT' | 'CANCELLED';

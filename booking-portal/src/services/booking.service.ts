@@ -4,21 +4,26 @@ import {
     CancelBookingResponse,
     CreateBookingPayload,
     CreateBookingResponse,
+    PaymentIntentResponse,
     SalonProfile,
     TimeSlot,
 } from '@/types/booking.contracts';
 import {
     mockCancelBooking,
     mockConfirmBookingPayment,
-    mockCreateBooking,
-    mockGetAvailableSlots,
     mockGetBookingByToken,
     mockGetBookingHistory,
     mockGetSalonProfile,
 } from './mocks/salon.mock';
 
 const USE_MOCKS = process.env.NEXT_PUBLIC_USE_MOCKS === 'true';
-const BOOKING_TOKENS_STORAGE_KEY = 'kodigo_booking_tokens';
+
+function generateIdempotencyKey(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `web_${crypto.randomUUID().replace(/-/g, '')}`;
+    }
+    return `web_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`;
+}
 
 export const bookingService = {
     usesMocks: USE_MOCKS,
@@ -32,64 +37,61 @@ export const bookingService = {
 
     async getAvailableSlots(params: {
         slug: string;
+        branchId: string;
         date: string;
         serviceId: string;
-        staffId: string | 'ANY';
-    }): Promise<TimeSlot[]> {
-        if (USE_MOCKS) {
-            return mockGetAvailableSlots(params);
-        }
+    }): Promise<{ slots: Array<{ startsAt: string }> } | TimeSlot[]> {
         const query = new URLSearchParams({
             date: params.date,
             serviceId: params.serviceId,
-            staffId: params.staffId,
         });
-        return apiClient<TimeSlot[]>(`/salons/${params.slug}/availability?${query}`);
+        return apiClient<{ slots: Array<{ startsAt: string }> }>(
+            `/negocios/${params.slug}/sucursales/${params.branchId}/disponibilidad?${query}`
+        );
     },
 
     async createBooking(
         payload: CreateBookingPayload
     ): Promise<CreateBookingResponse> {
-        const booking = USE_MOCKS
-            ? await mockCreateBooking(payload)
-            : await apiClient<CreateBookingResponse>('/bookings', {
-                  method: 'POST',
-                  body: JSON.stringify(payload),
-              });
+        const { slug, branchId, firstName, lastName, serviceId, startsAt, paymentMode } = payload;
 
-        if (typeof window !== 'undefined') {
-            try {
-                const rawTokens = localStorage.getItem(BOOKING_TOKENS_STORAGE_KEY);
-                const tokens: string[] = rawTokens ? JSON.parse(rawTokens) : [];
-                if (!tokens.includes(booking.manageToken)) {
-                    localStorage.setItem(
-                        BOOKING_TOKENS_STORAGE_KEY,
-                        JSON.stringify([...tokens, booking.manageToken])
-                    );
-                }
-            } catch (error) {
-                console.error('[BookingHistory] No se pudo guardar el acceso a la cita:', error);
+        return apiClient<CreateBookingResponse>(
+            `/negocios/${slug}/sucursales/${branchId}/reservas`,
+            {
+                method: 'POST',
+                headers: {
+                    'idempotency-key': generateIdempotencyKey(),
+                },
+                body: JSON.stringify({
+                    firstName,
+                    lastName,
+                    serviceId,
+                    startsAt,
+                    ...(paymentMode ? { paymentMode } : {}),
+                }),
             }
-        }
+        );
+    },
 
-        return booking;
+    async createPaymentIntent(
+        slug: string,
+        branchId: string,
+        appointmentId: string
+    ): Promise<PaymentIntentResponse> {
+        return apiClient<PaymentIntentResponse>(
+            `/negocios/${slug}/sucursales/${branchId}/pagos/intent`,
+            {
+                method: 'POST',
+                body: JSON.stringify({ appointmentId }),
+            }
+        );
     },
 
     async getBookingHistory(salonSlug?: string): Promise<BookingDetails[]> {
         if (USE_MOCKS) {
             return mockGetBookingHistory(salonSlug);
         }
-        if (typeof window === 'undefined') {
-            return [];
-        }
-
-        const rawTokens = localStorage.getItem(BOOKING_TOKENS_STORAGE_KEY);
-        const tokens: string[] = rawTokens ? JSON.parse(rawTokens) : [];
-        const bookings = await Promise.all(tokens.map((token) => this.getBookingByToken(token)));
-
-        return bookings
-            .filter((booking) => !salonSlug || booking.salon.slug === salonSlug)
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        return [];
     },
 
     async confirmMockPayment(

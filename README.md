@@ -6,6 +6,59 @@ Plataforma de disponibilidad y reservas para barberías con varias sucursales:
 
 ---
 
+## Estructura de Monorepo e Instalación Rápida
+
+El repositorio organiza ambos proyectos en un mismo monorepo:
+- **Raíz (`/`):** Backend Fastify + TypeScript y migraciones PostgreSQL.
+- **`booking-portal/`:** Frontend Next.js (App Router).
+
+### 1. Variables de entorno
+
+Cada proyecto tiene su propio archivo de entorno:
+
+- **Backend (`/.env` en la raíz):**
+  ```dotenv
+  DATABASE_URL=postgresql://reservas:CAMBIAR@127.0.0.1:5432/reservas
+  PORT=3000
+  HOST=127.0.0.1
+  STRIPE_SECRET_KEY=sk_test_...
+  STRIPE_WEBHOOK_SECRET=whsec_...
+  ```
+- **Frontend (`booking-portal/.env.local`):**
+  ```dotenv
+  NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+  NEXT_PUBLIC_USE_MOCKS=false
+  ```
+
+### 2. Instalación de dependencias
+
+Instala las dependencias en la raíz y dentro de `booking-portal/`:
+
+```bash
+# En la raíz (backend + concurrently)
+npm install
+
+# En el frontend
+cd booking-portal && pnpm install
+```
+
+*(Si no usas `pnpm`, también puedes ejecutar `npm install` dentro de `booking-portal/`).*
+
+### 3. Levantar todo el entorno
+
+Desde la raíz del repositorio, ejecuta un solo comando:
+
+```bash
+npm run dev
+```
+
+Esto inicia en paralelo:
+- **Backend (`dev:api`):** `http://127.0.0.1:3000`
+- **Frontend (`dev:web`):** `http://localhost:3001`
+
+---
+
 ## Backend (API REST)
 
 ### Dependencias del proyecto
