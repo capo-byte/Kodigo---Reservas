@@ -1,9 +1,13 @@
 import Fastify from 'fastify';
 import type { FastifyRequest } from 'fastify';
+import rawBody from 'fastify-raw-body';
 import type { Pool, PoolClient } from 'pg';
+import Stripe from 'stripe';
 import { z } from 'zod';
 import { availability, authorize, HttpError, inBranch, occupy, once, requireSlot } from './booking.js';
 import type { Scope } from './booking.js';
+import { registerPayments } from './payments.js';
+
 
 const uuid = z.uuid();
 const date = z.iso.date();
@@ -39,6 +43,7 @@ async function appointment(db: PoolClient, scope: Scope, appointmentId: string) 
 
 export function makeApp(pool: Pool) {
   const app = Fastify({ logger: false, bodyLimit: 16_384 });
+  app.register(rawBody, { field: 'rawBody', global: false, encoding: false, runFirst: true });
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof HttpError) return reply.code(error.statusCode).send({ error: error.message });
     if (error instanceof RangeError) return reply.code(400).send({ error: 'Fecha inválida' });
@@ -323,6 +328,11 @@ export function makeApp(pool: Pool) {
       });
     });
   }
+
+  app.after(() => {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '', { apiVersion: '2026-11-18.endive' as Stripe.LatestApiVersion });
+    registerPayments(app, pool, stripe);
+  });
 
   return app;
 }
