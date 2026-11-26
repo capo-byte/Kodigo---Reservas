@@ -3,14 +3,30 @@ import {
     BookingDetails,
     CancelBookingPayload,
     CancelBookingResponse,
-    CreateBookingPayload,
-    CreateBookingResponse,
     SalonProfile,
     TimeSlot,
 } from '@/types/booking.contracts';
 
+export interface MockCreateBookingPayload {
+    salonSlug: string;
+    serviceId: string;
+    additionalServiceIds: string[];
+    staffId: string;
+    startTime: string;
+    customer: { name: string; phone: string; email: string };
+}
+
+export interface MockCreateBookingResponse {
+    bookingId: string;
+    manageToken: string;
+    status: 'CONFIRMED' | 'PENDING_PAYMENT';
+    stripeClientSecret?: string;
+}
+
 export const MOCK_SALON: SalonProfile = {
     id: 'salon-001',
+    business_id: 'mock-business',
+    branch_id: 'mock-branch',
     slug: 'barberia-studio-sv',
     name: 'Studio 503 Barber & Hair',
     logoUrl: 'https://placehold.co/120x120/18181b/ffffff?text=S503',
@@ -18,8 +34,7 @@ export const MOCK_SALON: SalonProfile = {
     googleMapsUrl: 'https://maps.google.com/?q=Paseo+General+Escalon+San+Salvador',
     currency: 'USD',
     timezone: 'America/El_Salvador',
-    paymentPolicy: 'DEPOSIT',
-    depositPercentage: 25,
+    paymentPolicy: 'FULL_PREPAYMENT',
     staff: [
         {
             id: 'staff-1',
@@ -183,8 +198,8 @@ function saveStoredBooking(token: string, booking: BookingDetails) {
 }
 
 export async function mockCreateBooking(
-    payload: CreateBookingPayload
-): Promise<CreateBookingResponse> {
+    payload: MockCreateBookingPayload
+): Promise<MockCreateBookingResponse> {
     await sleep(600);
 
     const bookingId = `bk_${Math.random().toString(36).substring(2, 9)}`;

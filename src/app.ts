@@ -48,7 +48,7 @@ export function makeApp(pool: Pool, stripeClient?: Stripe, notifications?: Notif
     stripe ??= new Stripe(process.env.STRIPE_SECRET_KEY ?? '', { apiVersion: '2026-11-18.endive' as Stripe.LatestApiVersion });
     return stripe;
   }
-  const app = Fastify({ logger: false, bodyLimit: 16_384 });
+  const app = Fastify({ logger: true, bodyLimit: 16_384 });
   app.register(cors, { origin: true });
   app.register(rawBody, { field: 'rawBody', global: false, encoding: false, runFirst: true });
   app.setErrorHandler((error, request, reply) => {
@@ -57,6 +57,15 @@ export function makeApp(pool: Pool, stripeClient?: Stripe, notifications?: Notif
     request.log.error(error);
     const status = (error as { statusCode?: number }).statusCode;
     return reply.code(status && status < 500 ? status : 500).send({ error: 'No se pudo procesar la solicitud' });
+  });
+
+  app.get('/health', async (_request, reply) => {
+    try {
+      await pool.query('SELECT 1');
+      return { status: 'ok', db: 'connected' };
+    } catch {
+      return reply.code(503).send({ status: 'error', db: 'disconnected' });
+    }
   });
 
   const publicPath = '/negocios/:slug/sucursales/:branchId';

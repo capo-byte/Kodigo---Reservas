@@ -12,11 +12,12 @@ import {
     AlertTriangle,
 } from 'lucide-react';
 import {
-    CreateBookingResponse,
     SalonProfile,
     ServiceItem,
     TimeSlot,
 } from '@/types/booking.contracts';
+import type { BookingViewResult } from '@/types/booking-view.contracts';
+import { bookingService } from '@/services/booking.service';
 import { formatDatePill, formatSlotTime } from '@/lib/timezone';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -58,7 +59,7 @@ interface StepCustomerConfirmProps {
     onSubmitBooking: (validData: CustomerFormData) => Promise<void>;
     isSubmitting: boolean;
     conflictError: string | null;
-    pendingPayment: CreateBookingResponse | null;
+    pendingPayment: BookingViewResult | null;
     onPaymentComplete: (method: 'LOCAL' | 'CARD') => void;
 }
 
@@ -86,6 +87,7 @@ export function StepCustomerConfirm({
         }).format(amount);
 
     const upfrontAmount = (() => {
+        if (!bookingService.usesMocks) return 0;
         if (salon.paymentPolicy === 'FULL_PREPAYMENT') return service.price;
         if (salon.paymentPolicy === 'DEPOSIT') {
             const pct = salon.depositPercentage ?? 25;
@@ -120,7 +122,7 @@ export function StepCustomerConfirm({
     };
 
     // Si el backend creó la reserva en estado PENDING_PAYMENT, mostramos el slot unificado de pago
-    if (pendingPayment?.status === 'PENDING_PAYMENT') {
+    if (pendingPayment?.source === 'mock' && pendingPayment.status === 'PENDING_PAYMENT') {
         return (
             <PaymentSection
                 salonName={salon.name}
@@ -202,6 +204,9 @@ export function StepCustomerConfirm({
                             </span>
                             <span>{formatMoney(upfrontAmount)}</span>
                         </div>
+                    )}
+                    {!bookingService.usesMocks && (
+                        <p className="border-t pt-2 text-xs font-semibold">Pago en sucursal</p>
                     )}
                 </CardContent>
             </Card>

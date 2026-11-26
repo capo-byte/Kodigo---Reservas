@@ -3,11 +3,12 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-    CreateBookingResponse,
     SalonProfile,
     TimeSlot,
 } from '@/types/booking.contracts';
+import type { BookingViewResult } from '@/types/booking-view.contracts';
 import { bookingService } from '@/services/booking.service';
+import { mockCreateBooking } from '@/services/mocks/salon.mock';
 import { ApiError } from '@/lib/api-client';
 import { formatSlotTime } from '@/lib/timezone';
 import { StepServiceStaff } from './StepServiceStaff';
@@ -41,7 +42,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
     const [customer, setCustomer] = useState<CustomerFormData>(INITIAL_CUSTOMER);
 
     const [conflictError, setConflictError] = useState<string | null>(null);
-    const [bookingResult, setBookingResult] = useState<CreateBookingResponse | null>(null);
+    const [bookingResult, setBookingResult] = useState<BookingViewResult | null>(null);
     const [isConfirmed, setIsConfirmed] = useState(false);
 
     const selectedServices = useMemo(
@@ -73,6 +74,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
     }, [primaryService, selectedServices, totalDurationMinutes, totalPrice]);
 
     const selectedStaffLabel = useMemo(() => {
+        if (!bookingService.usesMocks) return 'Sin asignación de profesional';
         if (selectedStaffId === 'ANY') return 'Cualquier profesional';
         return salon.staff.find((m) => m.id === selectedStaffId)?.name ?? 'Profesional';
     }, [salon.staff, selectedStaffId]);
@@ -82,6 +84,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
             if (prev.includes(serviceId)) {
                 return prev.filter((id) => id !== serviceId);
             }
+            if (!bookingService.usesMocks) return [serviceId];
             return [...prev, serviceId];
         });
         setSelectedStaffId('ANY');
@@ -96,7 +99,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
     };
 
     const bookingMutation = useMutation({
-        mutationFn: (validCustomer: CustomerFormData) => {
+        mutationFn: async (validCustomer: CustomerFormData): Promise<BookingViewResult> => {
             if (!primaryService || !selectedSlot) {
                 throw new Error('Faltan datos de la reserva');
             }
@@ -105,19 +108,36 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
                     ? selectedSlot.availableStaffIds[0] ?? 'ANY'
                     : selectedStaffId;
 
-            return bookingService.createBooking({
-                salonSlug: salon.slug,
+            if (bookingService.usesMocks) {
+                const result = await mockCreateBooking({
+                    salonSlug: salon.slug,
+                    serviceId: primaryService.id,
+                    additionalServiceIds: additionalServices.map((s) => s.id),
+                    staffId: resolvedStaffId,
+                    startTime: selectedSlot.startTime,
+                    customer: validCustomer,
+                });
+                return { source: 'mock', ...result };
+            }
+            const [firstName, ...lastNameParts] = validCustomer.name.trim().split(/\s+/);
+            const lastName = lastNameParts.join(' ');
+            if (!lastName) throw new Error('Ingresa tu nombre y apellido.');
+            const result = await bookingService.createBooking({
+                slug: salon.slug,
+                branchId: salon.branch_id,
+                firstName,
+                lastName,
                 serviceId: primaryService.id,
-                additionalServiceIds: additionalServices.map((s) => s.id),
-                staffId: resolvedStaffId,
-                startTime: selectedSlot.startTime,
-                customer: validCustomer,
+                startsAt: selectedSlot.startTime,
+                paymentMode: 'in_person',
             });
+            return { source: 'api', ...result };
         },
         onSuccess: (data) => {
             setConflictError(null);
             setBookingResult(data);
-            if (data.status === 'CONFIRMED') {
+            if ((data.source === 'mock' && data.status === 'CONFIRMED') ||
+                (data.source === 'api' && data.status === 'confirmed')) {
                 setIsConfirmed(true);
             }
         },
@@ -146,7 +166,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
     };
 
     const handlePaymentComplete = async (paymentMethod: 'LOCAL' | 'CARD') => {
-        if (bookingResult && bookingService.usesMocks) {
+        if (bookingResult?.source === 'mock') {
             try {
                 await bookingService.confirmMockPayment(
                     bookingResult.manageToken,
@@ -221,6 +241,8 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
                         selectedStaffId={selectedStaffId}
                         onToggleService={handleToggleService}
                         onSelectStaff={handleSelectStaff}
+                        allowStaff={bookingService.usesMocks}
+                        allowMultiple={bookingService.usesMocks}
                     />
 
                     <StickyFooter
@@ -242,6 +264,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
                 <>
                     <StepDateTime
                         salonSlug={salon.slug}
+                        branchId={salon.branch_id}
                         salonTimeZone={salon.timezone}
                         service={selectedService}
                         staffId={selectedStaffId}
@@ -294,7 +317,7 @@ export function BookingWizard({ salon, embedded = false }: BookingWizardProps) {
                         onPaymentComplete={handlePaymentComplete}
                     />
 
-                    {bookingResult?.status !== 'PENDING_PAYMENT' && (
+                    {!(bookingResult?.source === 'mock' && bookingResult.status === 'PENDING_PAYMENT') && (
                         <StickyFooter
                             embedded={embedded}
                             summaryLabel={selectedService.name}

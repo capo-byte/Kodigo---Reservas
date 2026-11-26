@@ -6,7 +6,6 @@ import {
     CreateBookingResponse,
     PaymentIntentResponse,
     SalonProfile,
-    TimeSlot,
 } from '@/types/booking.contracts';
 import {
     mockCancelBooking,
@@ -40,7 +39,7 @@ export const bookingService = {
         branchId: string;
         date: string;
         serviceId: string;
-    }): Promise<{ slots: Array<{ startsAt: string }> } | TimeSlot[]> {
+    }): Promise<{ slots: Array<{ startsAt: string }> }> {
         const query = new URLSearchParams({
             date: params.date,
             serviceId: params.serviceId,

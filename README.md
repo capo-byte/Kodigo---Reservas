@@ -6,6 +6,34 @@ Plataforma de disponibilidad y reservas para barberías con varias sucursales:
 
 ---
 
+## Entorno local con Docker
+
+Ejecuta `docker compose up --build` desde la raíz. Compose inicia PostgreSQL,
+aplica las migraciones y arranca la API en `http://localhost:4000` y el portal
+de desarrollo en `http://localhost:3000`. La API expone `GET /health`. La base
+usa un volumen persistente; las credenciales predeterminadas son solo locales.
+Define `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `STRIPE_SECRET_KEY`
+y `STRIPE_WEBHOOK_SECRET` para sustituirlas. `NEXT_PUBLIC_API_URL` se incorpora
+al construir la imagen del portal; vuelve a construirla al cambiarlo.
+
+Las migraciones crean el esquema, pero no cargan sucursales ni servicios: usa
+los [datos iniciales](docs/arquitectura.md#datos-iniciales) para probar la API.
+El portal de Compose usa Next.js en modo desarrollo. El build de producción se
+verifica por separado en CI.
+
+Para la prueba de humo ejecuta `npm run test:e2e` en `booking-portal/` después
+de instalar Chromium con `npx playwright install chromium`. Para la prueba de
+carga, instala K6 y usa identificadores de prueba existentes:
+
+```bash
+k6 run -e BRANCH_ID=UUID_SUCURSAL -e SERVICE_ID=UUID_SERVICIO -e DATE=2026-12-01 load-test.js
+```
+
+Opcionalmente configura `BASE_URL` y `BUSINESS_SLUG`. El escenario realiza
+consultas de disponibilidad, no crea reservas ni datos.
+
+---
+
 ## Estructura de Monorepo e Instalación Rápida
 
 El repositorio organiza ambos proyectos en un mismo monorepo:
@@ -63,7 +91,7 @@ Esto inicia en paralelo:
 
 ### Dependencias del proyecto
 
-El proyecto usa Node.js 24 o posterior y npm para instalar las dependencias del proyecto en `node_modules`. El archivo `package-lock.json` fija las versiones que instala `npm ci`.
+El backend requiere Node.js 20.19 o posterior y npm para instalar las dependencias del proyecto en `node_modules`. El archivo `package-lock.json` fija las versiones que instala `npm ci`.
 
 | Paquete | Para qué se usa |
 |---|---|

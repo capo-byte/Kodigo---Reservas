@@ -18,7 +18,7 @@ export function isForeignTimeZone(salonTimeZone: string): boolean {
  * Formatea un timestamp ISO UTC (ej. "2026-11-25T15:00:00Z") en la zona horaria indicada.
  */
 export function formatSlotTime(isoUtc: string, timeZone: string): string {
-    return formatInTimeZone(isoUtc, timeZone, 'h:mm a', { locale: es });
+    return formatInTimeZone(isoUtc, timeZone, 'HH:mm', { locale: es });
 }
 
 /**

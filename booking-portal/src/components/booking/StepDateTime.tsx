@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Calendar, Clock, Globe, AlertCircle } from 'lucide-react';
 import { bookingService } from '@/services/booking.service';
+import { mockGetAvailableSlots } from '@/services/mocks/salon.mock';
 import { ServiceItem, TimeSlot } from '@/types/booking.contracts';
 import {
     formatDatePill,
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils';
 
 interface StepDateTimeProps {
     salonSlug: string;
+    branchId: string;
     salonTimeZone: string;
     service: ServiceItem;
     staffId: string | 'ANY';
@@ -27,6 +29,7 @@ interface StepDateTimeProps {
 
 export function StepDateTime({
     salonSlug,
+    branchId,
     salonTimeZone,
     service,
     staffId,
@@ -73,14 +76,23 @@ export function StepDateTime({
         isError,
         refetch,
     } = useQuery({
-        queryKey: ['availability', salonSlug, selectedDate, service.id, staffId],
-        queryFn: () =>
-            bookingService.getAvailableSlots({
+        queryKey: ['availability', salonSlug, branchId, selectedDate, service.id, staffId],
+        queryFn: async (): Promise<TimeSlot[]> => {
+            if (bookingService.usesMocks) {
+                return mockGetAvailableSlots({ date: selectedDate, serviceId: service.id, staffId });
+            }
+            const response = await bookingService.getAvailableSlots({
                 slug: salonSlug,
+                branchId,
                 date: selectedDate,
                 serviceId: service.id,
-                staffId,
-            }),
+            });
+            return response.slots.map(({ startsAt }) => ({
+                startTime: startsAt,
+                endTime: new Date(Date.parse(startsAt) + 20 * 60_000).toISOString(),
+                availableStaffIds: [],
+            }));
+        },
         enabled: Boolean(selectedDate && service.id),
     });
 

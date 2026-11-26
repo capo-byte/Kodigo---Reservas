@@ -15,6 +15,8 @@ interface StepServiceStaffProps {
     selectedStaffId: string | 'ANY';
     onToggleService: (serviceId: string) => void;
     onSelectStaff: (staffId: string | 'ANY') => void;
+    allowStaff: boolean;
+    allowMultiple: boolean;
 }
 
 export function StepServiceStaff({
@@ -25,6 +27,8 @@ export function StepServiceStaff({
     selectedStaffId,
     onToggleService,
     onSelectStaff,
+    allowStaff,
+    allowMultiple,
 }: StepServiceStaffProps) {
     const groupedServices = useMemo(() => {
         const map = new Map<string, ServiceItem[]>();
@@ -67,10 +71,10 @@ export function StepServiceStaff({
             <section aria-labelledby="services-heading" className="space-y-5">
                 <div>
                     <h2 id="services-heading" className="text-lg font-semibold tracking-tight">
-                        1. Elige uno o varios servicios
+                        {allowMultiple ? '1. Elige uno o varios servicios' : '1. Elige un servicio'}
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                        Toca los servicios que deseas realizarte hoy para añadirlos a tu cita.
+                        {allowMultiple ? 'Toca los servicios que deseas realizarte hoy para añadirlos a tu cita.' : 'Selecciona el servicio que deseas reservar.'}
                     </p>
                 </div>
 
@@ -146,7 +150,7 @@ export function StepServiceStaff({
             </section>
 
             {/* Selección de profesional (aparece al elegir al menos un servicio) */}
-            {selectedServices.length > 0 && (
+            {allowStaff && selectedServices.length > 0 && (
                 <section
                     aria-labelledby="staff-heading"
                     className="space-y-3 border-t pt-6 animate-in fade-in duration-200"
