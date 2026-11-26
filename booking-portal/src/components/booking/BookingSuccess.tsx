@@ -4,11 +4,11 @@
 import Link from 'next/link';
 import { CheckCircle2, Calendar, Clock, MapPin, ExternalLink, Plus } from 'lucide-react';
 import {
-    CreateBookingResponse,
     SalonProfile,
     ServiceItem,
     TimeSlot,
 } from '@/types/booking.contracts';
+import type { BookingViewResult } from '@/types/booking-view.contracts';
 import { formatDatePill, formatSlotTime } from '@/lib/timezone';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -21,7 +21,7 @@ interface BookingSuccessProps {
     date: string;
     slot: TimeSlot;
     customerName: string;
-    bookingResult: CreateBookingResponse;
+    bookingResult: BookingViewResult;
     onBookAnother: () => void;
 }
 
@@ -47,7 +47,7 @@ export function BookingSuccess({
                 <p className="text-sm text-muted-foreground">
                     Te esperamos, <strong className="text-foreground">{customerName}</strong>. Código:{' '}
                     <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-foreground">
-                        {bookingResult.bookingId}
+                        {bookingResult.source === 'mock' ? bookingResult.bookingId : bookingResult.id}
                     </code>
                 </p>
             </div>
@@ -95,12 +95,12 @@ export function BookingSuccess({
             </Card>
 
             <div className="flex flex-col sm:flex-row gap-2.5">
-                <Link
+                {bookingResult.source === 'mock' && <Link
                     href={`/booking/${bookingResult.manageToken}`}
                     className={cn(buttonVariants({ variant: 'outline' }), 'flex-1 text-center')}
                 >
                     Ver o cancelar mi cita
-                </Link>
+                </Link>}
 
                 <Button type="button" variant="secondary" className="flex-1 gap-1.5" onClick={onBookAnother}>
                     <Plus className="h-4 w-4" />

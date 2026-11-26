@@ -117,8 +117,6 @@ export function registerPayments(app: FastifyInstance, pool: Pool, stripe: Strip
       throw new HttpError(400, 'Firma de webhook inválida');
     }
 
-    console.log('Buffer.isBuffer(rawBody):', Buffer.isBuffer(rawBody));
-
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(rawBody, signature, secret);
@@ -136,10 +134,28 @@ export function registerPayments(app: FastifyInstance, pool: Pool, stripe: Strip
           const inserted = await db.query(
             `INSERT INTO stripe_webhook_events (event_id, type, payload, status, attempts)
              VALUES ($1, $2, $3, 'received', 1)
-             ON CONFLICT (event_id) DO NOTHING`,
+             ON CONFLICT (event_id) DO UPDATE
+             SET status='received', attempts=stripe_webhook_events.attempts + 1, last_error=NULL
+             WHERE stripe_webhook_events.status='failed'
+             RETURNING event_id`,
             [event.id, event.type, JSON.stringify(event)],
           );
           if (!inserted.rowCount) return;
+
+          const { rows: [intent] } = await db.query<{
+            amount_minor: string; currency: string; price_minor: string; status: string;
+          }>(
+            `SELECT i.amount_minor, i.currency, a.price_minor, a.status
+             FROM stripe_payment_intents i
+             JOIN appointments a ON (a.business_id,a.branch_id,a.id)=(i.business_id,i.branch_id,i.appointment_id)
+             WHERE i.business_id=$1 AND i.branch_id=$2 AND i.appointment_id=$3 AND i.stripe_pi_id=$4`,
+            [...scope, appointmentId, pi.id],
+          );
+          if (!intent || pi.status !== 'succeeded' || pi.currency !== intent.currency.trim() ||
+              !Number.isSafeInteger(pi.amount) || pi.amount !== Number(intent.amount_minor) ||
+              pi.amount_received !== pi.amount || intent.amount_minor !== intent.price_minor) {
+            throw new HttpError(409, 'PaymentIntent, importe, moneda o ámbito inválido');
+          }
 
           await db.query(
             `UPDATE stripe_payment_intents
@@ -148,20 +164,52 @@ export function registerPayments(app: FastifyInstance, pool: Pool, stripe: Strip
             [pi.status, ...scope, pi.id],
           );
 
-          await db.query(
-            `UPDATE appointments
-             SET expires_at=NULL
-             WHERE business_id=$1 AND branch_id=$2 AND id=$3 AND status='confirmed'`,
-            [...scope, appointmentId],
+          const { rows: [existingPayment] } = await db.query(
+            `SELECT id, appointment_id, amount_minor, status FROM payments
+             WHERE business_id=$1 AND branch_id=$2 AND recipient='branch' AND reference=$3`,
+            [...scope, pi.id],
           );
-
-          await db.query(
+          if (existingPayment && (existingPayment.appointment_id !== appointmentId ||
+              Number(existingPayment.amount_minor) !== pi.amount)) {
+            throw new HttpError(409, 'Referencia de pago en uso');
+          }
+          const previousPaid = await db.query(
+            `SELECT 1 FROM payments WHERE business_id=$1 AND branch_id=$2 AND appointment_id=$3
+             AND status='paid' AND (recipient <> 'branch' OR reference <> $4) LIMIT 1`,
+            [...scope, appointmentId, pi.id],
+          );
+          const reasons: string[] = [];
+          if (['expired', 'cancelled', 'no_show'].includes(intent.status)) reasons.push('late');
+          if (previousPaid.rowCount) reasons.push('duplicate');
+          const { rows: [payment] } = await db.query(
             `INSERT INTO payments
                (business_id, branch_id, appointment_id, reference, status, recipient, amount_minor, method, requires_review)
-             VALUES ($1, $2, $3, $4, 'paid', 'branch', $5, 'external', false)
-             ON CONFLICT (business_id, branch_id, recipient, reference) DO NOTHING`,
-            [...scope, appointmentId, pi.id, pi.amount],
+             VALUES ($1, $2, $3, $4, 'paid', 'branch', $5, 'external', $6)
+             ON CONFLICT (business_id, branch_id, recipient, reference) DO UPDATE
+             SET status='paid', method='external', requires_review=EXCLUDED.requires_review
+             WHERE payments.status <> 'paid' RETURNING id`,
+            [...scope, appointmentId, pi.id, pi.amount, reasons.length > 0],
           );
+          if (payment) {
+            await db.query(
+              `UPDATE payment_reviews SET resolved_at=clock_timestamp()
+               WHERE business_id=$1 AND branch_id=$2 AND payment_id=$3
+                 AND reason IN ('pending','failed') AND resolved_at IS NULL`, [...scope, payment.id],
+            );
+            for (const reason of reasons) {
+              await db.query(
+                `INSERT INTO payment_reviews (business_id,branch_id,payment_id,reason)
+                 VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [...scope, payment.id, reason],
+              );
+            }
+            if (!reasons.length && intent.status === 'confirmed') {
+              await db.query(
+                `UPDATE appointments SET expires_at=NULL
+                 WHERE business_id=$1 AND branch_id=$2 AND id=$3 AND status='confirmed'`,
+                [...scope, appointmentId],
+              );
+            }
+          }
 
           await db.query(
             `UPDATE stripe_webhook_events
@@ -176,7 +224,8 @@ export function registerPayments(app: FastifyInstance, pool: Pool, stripe: Strip
           `INSERT INTO stripe_webhook_events (event_id, type, payload, status, attempts, last_error)
            VALUES ($1, $2, $3, 'failed', 1, $4)
            ON CONFLICT (event_id) DO UPDATE
-           SET status='failed', attempts=stripe_webhook_events.attempts + 1, last_error=EXCLUDED.last_error`,
+           SET status='failed', attempts=stripe_webhook_events.attempts + 1, last_error=EXCLUDED.last_error
+           WHERE stripe_webhook_events.status <> 'processed'`,
           [event.id, event.type, JSON.stringify(event), message],
         );
         throw error;

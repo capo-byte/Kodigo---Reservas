@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { availability, authorize, HttpError, inBranch, occupy, once, requireSlot } from './booking.js';
 import type { Scope } from './booking.js';
 import { registerPayments } from './payments.js';
+import type { NotificationQueue } from './notifications/types.js';
 
 const uuid = z.uuid();
 const date = z.iso.date();
@@ -41,8 +42,13 @@ async function appointment(db: PoolClient, scope: Scope, appointmentId: string) 
   return row;
 }
 
-export function makeApp(pool: Pool) {
-  const app = Fastify({ logger: false, bodyLimit: 16_384 });
+export function makeApp(pool: Pool, stripeClient?: Stripe, notifications?: NotificationQueue) {
+  let stripe = stripeClient;
+  function getStripe(): Stripe {
+    stripe ??= new Stripe(process.env.STRIPE_SECRET_KEY ?? '', { apiVersion: '2026-11-18.endive' as Stripe.LatestApiVersion });
+    return stripe;
+  }
+  const app = Fastify({ logger: true, bodyLimit: 16_384 });
   app.register(cors, { origin: true });
   app.register(rawBody, { field: 'rawBody', global: false, encoding: false, runFirst: true });
   app.setErrorHandler((error, request, reply) => {
@@ -51,6 +57,15 @@ export function makeApp(pool: Pool) {
     request.log.error(error);
     const status = (error as { statusCode?: number }).statusCode;
     return reply.code(status && status < 500 ? status : 500).send({ error: 'No se pudo procesar la solicitud' });
+  });
+
+  app.get('/health', async (_request, reply) => {
+    try {
+      await pool.query('SELECT 1');
+      return { status: 'ok', db: 'connected' };
+    } catch {
+      return reply.code(503).send({ status: 'error', db: 'disconnected' });
+    }
   });
 
   const publicPath = '/negocios/:slug/sucursales/:branchId';
@@ -104,6 +119,7 @@ export function makeApp(pool: Pool) {
         await occupy(db, scope, created.id, startsAt);
         return created;
       }));
+    notifications?.enqueue({ businessId: scope[0], branchId: scope[1], appointmentId: result.id, kind: 'confirmation' });
     return reply.code(201).send(result);
   });
 
@@ -311,28 +327,60 @@ export function makeApp(pool: Pool) {
               `INSERT INTO refunds (business_id,branch_id,payment_id,authorized_by)
                SELECT business_id,branch_id,id,$4 FROM payments WHERE business_id=$1 AND branch_id=$2 AND id=$3 AND status='paid'
                ON CONFLICT (business_id,branch_id,payment_id) DO UPDATE SET payment_id=EXCLUDED.payment_id
-               RETURNING id, authorized_by, issued_by`, [...scope, paymentId, actor])
+              RETURNING id, authorized_by, issued_by, status, stripe_refund_id`, [...scope, paymentId, actor])
             : await db.query(
-              `UPDATE refunds SET issued_by=COALESCE(issued_by,$4)
-               WHERE business_id=$1 AND branch_id=$2 AND payment_id=$3 RETURNING id, authorized_by, issued_by`,
-              [...scope, paymentId, actor]);
+              `SELECT r.id, r.authorized_by, r.issued_by, r.status, r.stripe_refund_id,
+                      i.stripe_pi_id
+               FROM refunds r JOIN payments p ON (p.business_id,p.branch_id,p.id)=(r.business_id,r.branch_id,r.payment_id)
+               LEFT JOIN stripe_payment_intents i ON (i.business_id,i.branch_id,i.appointment_id,i.stripe_pi_id)=
+                 (p.business_id,p.branch_id,p.appointment_id,p.reference)
+               WHERE r.business_id=$1 AND r.branch_id=$2 AND r.payment_id=$3`,
+              [...scope, paymentId]);
           if (!refund) throw new HttpError(409, 'Se requiere un pago registrado y una autorización para emitir el reembolso');
           if (step === 'emitir') {
-            await db.query(
-              `UPDATE payment_reviews SET resolved_at=clock_timestamp()
-               WHERE business_id=$1 AND branch_id=$2 AND payment_id=$3
-                 AND reason IN ('late','duplicate') AND resolved_at IS NULL`, [...scope, paymentId],
-            );
+            if (!refund.issued_by && refund.stripe_pi_id) {
+              const external = refund.stripe_refund_id
+                ? await getStripe().refunds.retrieve(refund.stripe_refund_id)
+                : await getStripe().refunds.create(
+                  { payment_intent: refund.stripe_pi_id },
+                  { idempotencyKey: `refund-${businessId}-${branchId}-${refund.id}` },
+                );
+              const status = external.status === 'succeeded' ? 'succeeded'
+                : external.status === 'failed' || external.status === 'canceled' ? 'failed' : 'pending';
+              const { rows: [updated] } = await db.query(
+                `UPDATE refunds SET status=$4, stripe_refund_id=$5,
+                   issued_by=CASE WHEN $4='succeeded' THEN $6 ELSE issued_by END
+                 WHERE business_id=$1 AND branch_id=$2 AND payment_id=$3
+                 RETURNING id, authorized_by, issued_by, status, stripe_refund_id`,
+                [...scope, paymentId, status, external.id, actor],
+              );
+              Object.assign(refund, updated);
+            } else if (!refund.issued_by) {
+              const { rows: [updated] } = await db.query(
+                `UPDATE refunds SET status='manual', issued_by=$4
+                 WHERE business_id=$1 AND branch_id=$2 AND payment_id=$3
+                 RETURNING id, authorized_by, issued_by, status, stripe_refund_id`,
+                [...scope, paymentId, actor],
+              );
+              Object.assign(refund, updated);
+            }
+            if (refund.issued_by) {
+              await db.query(
+                `UPDATE payment_reviews SET resolved_at=clock_timestamp()
+                 WHERE business_id=$1 AND branch_id=$2 AND payment_id=$3
+                   AND reason IN ('late','duplicate') AND resolved_at IS NULL`, [...scope, paymentId],
+              );
+            }
           }
-          return refund;
+          return { id: refund.id, authorized_by: refund.authorized_by, issued_by: refund.issued_by,
+            status: refund.status, stripe_refund_id: refund.stripe_refund_id };
         });
       });
     });
   }
 
   app.after(() => {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? '', { apiVersion: '2026-11-18.endive' as Stripe.LatestApiVersion });
-    registerPayments(app, pool, stripe);
+    registerPayments(app, pool, getStripe());
   });
 
   return app;
