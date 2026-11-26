@@ -35,3 +35,14 @@ El frontend usa Next.js, React y TypeScript, con Tailwind CSS y shadcn/ui.
 - Respeta la regla declarada de que la recepcionista puede ver ingresos, cambiar precios y emitir reembolsos. Solo el administrador de sucursal autoriza reembolsos. Pide al equipo que aclare cómo coordinar la emisión y la autorización.
 - Usa una `Idempotency-Key` para reservas, cobros y reembolsos. Vincúlala al ámbito de la operación y registra su resultado de forma atómica para evitar efectos duplicados incluso ante reintentos concurrentes.
 - Consulta y mantén actualizadas la matriz de permisos y la decisión sobre aislamiento en [docs/arquitectura.md](docs/arquitectura.md). Registra allí las decisiones de dominio pendientes.
+
+## Integración Frontend-Backend (Contratos Reales)
+
+- El backend usa `business_id` y `branch_id` (NO `salon_id` ni `staffId`, y NO genera `manageToken`).
+- El backend no maneja especialistas (`staff`) ni tokens de gestión pública. Las reservas se crean en `POST /negocios/:slug/sucursales/:branchId/reservas` únicamente con `{ firstName, lastName, serviceId, startsAt, paymentMode }` (con cabecera `idempotency-key`) y devuelven `{ id, status, starts_at, expires_at }`.
+- Los pagos no admiten anticipos (`DEPOSIT`): solo se admite pago total online (`paymentMode: 'online'`) o pago en sucursal (`paymentMode: 'in_person'`).
+- El flujo de reserva online es:
+  1. Crear reserva (`POST /negocios/:slug/sucursales/:branchId/reservas`).
+  2. Llamar a `/pagos/intent` (`POST /negocios/:slug/sucursales/:branchId/pagos/intent` enviando `{ appointmentId }`) para obtener `{ paymentId, clientSecret, amountMinor, status }`.
+  3. Usar `clientSecret` con Stripe Elements.
+- Abel y Karen ya pueden importar sus funciones reales (`getAvailableSlots`, `createBooking`, `createPaymentIntent`) desde `booking-portal/src/services/booking.service.ts` y solo deben reemplazar los Mocks por las llamadas reales en sus componentes `.tsx`.
