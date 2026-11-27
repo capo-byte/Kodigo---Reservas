@@ -92,7 +92,17 @@ export function BookingManagementView({ initialBooking }: BookingManagementViewP
     const canCancel = !isCancelled;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
+            <div>
+                <Link
+                    href={`/booking/history?salon=${encodeURIComponent(booking.salon.slug)}`}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition-all hover:border-foreground/25 hover:bg-accent active:scale-[0.98]"
+                >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    <span>Volver a mis citas</span>
+                </Link>
+            </div>
+
             {/* Cabecera con estado de la reserva */}
             <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b pb-4">
