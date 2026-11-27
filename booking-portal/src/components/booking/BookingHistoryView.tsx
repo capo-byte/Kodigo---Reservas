@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Calendar, Clock, History } from 'lucide-react';
+import { ArrowLeft, Calendar, Clock, History } from 'lucide-react';
 import { BookingDetails } from '@/types/booking.contracts';
 import { bookingService } from '@/services/booking.service';
 import { formatDatePill, formatSlotTime } from '@/lib/timezone';
@@ -47,17 +47,27 @@ export function BookingHistoryView() {
 
     return (
         <main className="mx-auto min-h-screen max-w-2xl space-y-6 px-4 py-8">
-            <header className="space-y-2">
-                <Link href={salonSlug ? `/embed/${salonSlug}` : '/'} className="text-sm underline">
-                    Volver al salón
-                </Link>
-                <div className="flex items-center gap-2">
-                    <History className="h-5 w-5 text-primary" />
-                    <h1 className="text-2xl font-bold tracking-tight">Mis citas</h1>
+            <header className="space-y-5 border-b pb-5">
+                <div>
+                    <Link
+                        href={salonSlug ? `/embed/${salonSlug}` : '/'}
+                        className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2 text-xs font-semibold text-foreground shadow-xs transition-all hover:border-foreground/25 hover:bg-accent active:scale-[0.98]"
+                    >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        <span>Volver al salón</span>
+                    </Link>
                 </div>
-                <p className="text-sm text-muted-foreground">
-                    Consulta tus reservas guardadas en este navegador y cancela las que ya no necesites.
-                </p>
+                <div className="space-y-1.5">
+                    <div className="flex items-center gap-2.5">
+                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                            <History className="h-4 w-4" />
+                        </span>
+                        <h1 className="text-2xl font-bold tracking-tight">Mis citas</h1>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        Consulta tus reservas guardadas en este navegador y cancela las que ya no necesites.
+                    </p>
+                </div>
             </header>
 
             {isLoading && <p className="text-sm text-muted-foreground">Cargando tus citas...</p>}
